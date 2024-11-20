@@ -3,11 +3,13 @@ import copy
 import numpy as np
 import torch
 import torch.nn as nn
-from sklearn.model_selection import RepeatedKFold
+from sklearn.model_selection import RepeatedKFold, train_test_split
 import json
 import os
 import time
 import pandas as pd
+import pytorch_lightning as pl
+import torch.optim as optim
 
 # Model structure and evolutionary parameters
 population_size = 20
@@ -26,6 +28,11 @@ X_analysis = pd.read_csv('classification_ozone/X_train.csv')
 y_analysis = pd.read_csv('classification_ozone/y_train.csv')
 X_test = pd.read_csv('classification_ozone/X_test.csv')
 y_test = pd.read_csv('classification_ozone/y_test.csv')
+
+# Split X_analysis and y_analysis into X_train, X_validation, y_train, y_validation
+# 80% training, 20% validation
+X_train, X_validation, y_train, y_validation = train_test_split(
+    X_analysis, y_analysis, test_size=0.2, random_state=42)
 
 # Function to save results in a JSON file
 def save_run_results_json(filename, run_results):
@@ -71,12 +78,25 @@ class Genotype:
         return self.fitness
 
     def to_phenotype(self):
-        layers = []
-        input_channels = 1
+        return Phenotype(self.architecture)
+    
+class Phenotype(pl.LightningModule):
+    def __init__(self, genotype):
+        super(Phenotype, self).__init__()
+        self.genotype = genotype
+        self.model = self.build_model_from_genotype(genotype)
+        self.loss_fn = nn.CrossEntropyLoss()
 
-        for layer in self.architecture:
+    def build_model_from_genotype(self, genotype):
+        layers = []
+        input_channels = 1  # Assuming 1 input channel (e.g., grayscale image)
+
+        for layer in genotype:
             if layer['layer'] == 'Conv':
                 layers.append(nn.Conv2d(input_channels, layer['filters'], layer['kernel_size']))
+                input_channels = layer['filters']
+                
+                # Add activation function
                 if layer['activation'] == 'relu':
                     layers.append(nn.ReLU())
                 elif layer['activation'] == 'elu':
@@ -87,14 +107,16 @@ class Genotype:
                     layers.append(nn.Sigmoid())
                 elif layer['activation'] == 'linear':
                     layers.append(nn.Identity())
-                input_channels = layer['filters']
 
             elif layer['layer'] == 'MaxPooling':
                 layers.append(nn.MaxPool2d(layer['pool_size']))
 
             elif layer['layer'] == 'Dense':
-                layers.append(nn.Flatten())
+                layers.append(nn.Flatten())  # Flatten before Dense layer
                 layers.append(nn.Linear(input_channels, layer['units']))
+                input_channels = layer['units']
+                
+                # Add activation function
                 if layer['activation'] == 'relu':
                     layers.append(nn.ReLU())
                 elif layer['activation'] == 'elu':
@@ -105,11 +127,34 @@ class Genotype:
                     layers.append(nn.Sigmoid())
                 elif layer['activation'] == 'linear':
                     layers.append(nn.Identity())
-                input_channels = layer['units']
 
             elif layer['layer'] == 'Dropout':
                 layers.append(nn.Dropout(layer['rate']))
+
         return nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.model(x)
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self.forward(x)
+        loss = self.loss_fn(logits, y)
+        self.log('train_loss', loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        logits = self.forward(x)
+        loss = self.loss_fn(logits, y)
+        acc = (logits.argmax(dim=1) == y).float().mean()
+        self.log('val_loss', loss, prog_bar=True)
+        self.log('val_acc', acc, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), lr=1e-3)
+
 
 def fitness_function(architecture):
     accuracy = random.uniform(0.4, 0.9)
