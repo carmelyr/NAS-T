@@ -1,6 +1,6 @@
 import torch.nn as nn
 import unittest
-from nas_t import Genotype, fitness_function
+from nas_t import Genotype, fitness_function, Phenotype
 
 class TestGenotype(unittest.TestCase):
     
@@ -18,15 +18,18 @@ class TestGenotype(unittest.TestCase):
             if 'activation' in layer:
                 self.assertIn(layer['activation'], ['softmax', 'relu', 'elu', 'selu', 'sigmoid', 'linear'])
 
-    # method to test genotype evaluation
+    # method to test genotype to phenotype conversion
     def test_genotype_to_phenotype(self):
         genotype = Genotype()
         model = genotype.to_phenotype()
         
-        # checks if model is a PyTorch Sequential model
-        self.assertIsInstance(model, nn.Sequential)
+        # checks if model is an instance of Phenotype
+        self.assertIsInstance(model, Phenotype)
         
-    # method to test genotype evaluation
+        # checks if model's internal model is a PyTorch Sequential model
+        self.assertIsInstance(model.model, nn.Sequential)
+        
+    # method to test fitness evaluation
     def test_fitness_evaluation(self):
         architecture = [
             {'layer': 'Conv', 'filters': 32, 'kernel_size': 3},
