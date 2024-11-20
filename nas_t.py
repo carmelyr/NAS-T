@@ -10,6 +10,8 @@ import time
 import pandas as pd
 import pytorch_lightning as pl
 import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from pytorch_lightning import Trainer
 
 # Model structure and evolutionary parameters
 population_size = 20
@@ -33,6 +35,20 @@ y_test = pd.read_csv('classification_ozone/y_test.csv')
 # 80% training, 20% validation
 X_train, X_validation, y_train, y_validation = train_test_split(
     X_analysis, y_analysis, test_size=0.2, random_state=42)
+
+# Convert data to PyTorch tensors
+X_train_tensor = torch.tensor(X_train.values, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train.values, dtype=torch.long)
+X_validation_tensor = torch.tensor(X_validation.values, dtype=torch.float32)
+y_validation_tensor = torch.tensor(y_validation.values, dtype=torch.long)
+
+# Create TensorDatasets
+train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+validation_dataset = TensorDataset(X_validation_tensor, y_validation_tensor)
+
+# Create DataLoaders
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+validation_loader = DataLoader(validation_dataset, batch_size=32)
 
 # Function to save results in a JSON file
 def save_run_results_json(filename, run_results):
@@ -90,11 +106,14 @@ class Phenotype(pl.LightningModule):
     def build_model_from_genotype(self, genotype):
         layers = []
         input_channels = 1  # Assuming 1 input channel (e.g., grayscale image)
+        output_size = 1201  # Assuming 1201 features in the input data
 
         for layer in genotype:
             if layer['layer'] == 'Conv':
-                layers.append(nn.Conv2d(input_channels, layer['filters'], layer['kernel_size']))
+                layers.append(nn.Conv1d(input_channels, layer['filters'], layer['kernel_size']))
                 input_channels = layer['filters']
+                # Update the output size after Conv1d (reduce due to kernel size)
+                output_size = output_size - layer['kernel_size'] + 1
                 
                 # Add activation function
                 if layer['activation'] == 'relu':
@@ -109,11 +128,14 @@ class Phenotype(pl.LightningModule):
                     layers.append(nn.Identity())
 
             elif layer['layer'] == 'MaxPooling':
-                layers.append(nn.MaxPool2d(layer['pool_size']))
+                layers.append(nn.MaxPool1d(layer['pool_size']))
+                # Update the output size after MaxPooling (reduce due to pool size)
+                output_size = output_size // layer['pool_size']
 
             elif layer['layer'] == 'Dense':
-                layers.append(nn.Flatten())  # Flatten before Dense layer
-                layers.append(nn.Linear(input_channels, layer['units']))
+                # Flatten before the Dense layer if it's not already done
+                layers.append(nn.Flatten())  # Ensure the tensor is 2D (batch_size, features)
+                layers.append(nn.Linear(input_channels * output_size, layer['units']))
                 input_channels = layer['units']
                 
                 # Add activation function
@@ -134,11 +156,14 @@ class Phenotype(pl.LightningModule):
         return nn.Sequential(*layers)
 
     def forward(self, x):
+        # Reshape input to be compatible with Conv2d: [batch_size, channels, height]
+        x = x.view(x.size(0), 1, -1)  # [batch_size, channels, height]
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self.forward(x)
+        y = y.view(-1)  # Make sure y is a 1D tensor
         loss = self.loss_fn(logits, y)
         self.log('train_loss', loss)
         return loss
@@ -146,6 +171,7 @@ class Phenotype(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         logits = self.forward(x)
+        y = y.view(-1)  # Make sure y is a 1D tensor
         loss = self.loss_fn(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
         self.log('val_loss', loss, prog_bar=True)
@@ -197,6 +223,11 @@ class NASDifferentialEvolution:
             if random.random() < CR:
                 offspring_architecture[i] = mutant.architecture[i]
         return Genotype(offspring_architecture)
+    
+    def train_and_save_phenotype(self, phenotype, train_loader, validation_loader, save_path):
+        trainer = pl.Trainer(max_epochs=10)  # Adjust epochs as needed
+        trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
+        trainer.save_checkpoint(save_path)
 
     def evolve(self):
         run_results = {"run_id": 1, "generations": []}
@@ -259,7 +290,18 @@ class NASDifferentialEvolution:
             print(best_overall_individual.architecture)
             print("Fitness:", best_overall_fitness)
 
+        # Train the best overall individual and save the model
+        if best_overall_individual:
+            phenotype = best_overall_individual.to_phenotype()
+            self.train_and_save_phenotype(
+                phenotype,
+                train_loader,
+                validation_loader,
+                save_path=f"best_model_gen_{best_generation}.ckpt"
+        )
+
         save_run_results_json("evolutionary_runs.json", run_results)
+
 
 if __name__ == "__main__":
     nas_de = NASDifferentialEvolution(verbose=True)
