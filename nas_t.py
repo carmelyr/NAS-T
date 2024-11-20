@@ -89,18 +89,23 @@ class Genotype:
         self.config = self.architecture
         self.fitness = None
 
-    def evaluate(self):
-        self.fitness = fitness_function(self.architecture)
+    def evaluate(self, validation_accuracy=None):
+        if validation_accuracy is None:
+            # Assign a random validation accuracy during the initial evaluation
+            validation_accuracy = random.uniform(0.4, 0.9)
+        self.fitness = fitness_function(self.architecture, validation_accuracy)
         return self.fitness
+
 
     def to_phenotype(self):
         return Phenotype(self.architecture)
     
 class Phenotype(pl.LightningModule):
-    def __init__(self, genotype):
+    def __init__(self, genotype=None):
         super(Phenotype, self).__init__()
-        self.genotype = genotype
-        self.model = self.build_model_from_genotype(genotype)
+        if genotype:
+            self.genotype = genotype
+            self.model = self.build_model_from_genotype(genotype)
         self.loss_fn = nn.CrossEntropyLoss()
 
     def build_model_from_genotype(self, genotype):
@@ -129,12 +134,10 @@ class Phenotype(pl.LightningModule):
 
             elif layer['layer'] == 'MaxPooling':
                 layers.append(nn.MaxPool1d(layer['pool_size']))
-                # Update the output size after MaxPooling (reduce due to pool size)
                 output_size = output_size // layer['pool_size']
 
             elif layer['layer'] == 'Dense':
-                # Flatten before the Dense layer if it's not already done
-                layers.append(nn.Flatten())  # Ensure the tensor is 2D (batch_size, features)
+                layers.append(nn.Flatten())
                 layers.append(nn.Linear(input_channels * output_size, layer['units']))
                 input_channels = layer['units']
                 
@@ -154,16 +157,23 @@ class Phenotype(pl.LightningModule):
                 layers.append(nn.Dropout(layer['rate']))
 
         return nn.Sequential(*layers)
+    
+    @classmethod
+    def load_from_checkpoint(cls, checkpoint_path, genotype, **kwargs):
+        instance = cls(genotype=genotype, **kwargs)
+        checkpoint = torch.load(checkpoint_path)
+        instance.load_state_dict(checkpoint['state_dict'], strict=False)
+        return instance
+
 
     def forward(self, x):
-        # Reshape input to be compatible with Conv2d: [batch_size, channels, height]
-        x = x.view(x.size(0), 1, -1)  # [batch_size, channels, height]
+        x = x.view(x.size(0), 1, -1)
         return self.model(x)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self.forward(x)
-        y = y.view(-1)  # Make sure y is a 1D tensor
+        y = y.view(-1)
         loss = self.loss_fn(logits, y)
         self.log('train_loss', loss)
         return loss
@@ -171,7 +181,7 @@ class Phenotype(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x, y = batch
         logits = self.forward(x)
-        y = y.view(-1)  # Make sure y is a 1D tensor
+        y = y.view(-1)
         loss = self.loss_fn(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
         self.log('val_loss', loss, prog_bar=True)
@@ -182,11 +192,14 @@ class Phenotype(pl.LightningModule):
         return optim.Adam(self.parameters(), lr=1e-3)
 
 
-def fitness_function(architecture):
-    accuracy = random.uniform(0.4, 0.9)
+def fitness_function(architecture, validation_accuracy):
     model_size = sum(layer.get('filters', 0) + layer.get('units', 0) for layer in architecture)
     training_time = 0.1 * model_size
-    return accuracy - alpha * model_size - BETA * training_time
+    accuracy_component = validation_accuracy
+    size_penalty = alpha * model_size
+    time_penalty = BETA * training_time
+    fitness = accuracy_component - size_penalty - time_penalty
+    return max(0.0, fitness)
 
 class NASDifferentialEvolution:
     def __init__(self, population_size=population_size, generations=generations, verbose=True):
@@ -225,9 +238,27 @@ class NASDifferentialEvolution:
         return Genotype(offspring_architecture)
     
     def train_and_save_phenotype(self, phenotype, train_loader, validation_loader, save_path):
-        trainer = pl.Trainer(max_epochs=10)  # Adjust epochs as needed
+        trainer = pl.Trainer(max_epochs=10)
         trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
         trainer.save_checkpoint(save_path)
+
+    def load_and_evaluate_phenotype(self, phenotype_path, genotype, validation_loader):
+        phenotype = Phenotype.load_from_checkpoint(phenotype_path, genotype=genotype)
+        phenotype.eval()
+
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for batch in validation_loader:
+                x, y = batch
+                logits = phenotype(x)
+                predictions = logits.argmax(dim=1)
+                correct += (predictions == y.view(-1)).sum().item()
+                total += y.size(0)
+
+        validation_accuracy = correct / total
+        return validation_accuracy
+
 
     def evolve(self):
         run_results = {"run_id": 1, "generations": []}
@@ -236,7 +267,7 @@ class NASDifferentialEvolution:
         best_generation = -1
 
         for generation in range(self.generations):
-            start_time = time.perf_counter()  # Use higher precision timer
+            start_time = time.perf_counter()
             if self.verbose:
                 print(f"Generation {generation + 1}")
 
@@ -280,7 +311,7 @@ class NASDifferentialEvolution:
             }
             run_results["generations"].append(generation_result)
 
-            end_time = time.perf_counter()  # Higher precision timer
+            end_time = time.perf_counter()
             if self.verbose:
                 print(f"Runtime for generation {generation + 1}: {end_time - start_time:.6f} seconds\n")
 
@@ -293,15 +324,12 @@ class NASDifferentialEvolution:
         # Train the best overall individual and save the model
         if best_overall_individual:
             phenotype = best_overall_individual.to_phenotype()
-            self.train_and_save_phenotype(
-                phenotype,
-                train_loader,
-                validation_loader,
-                save_path=f"best_model_gen_{best_generation}.ckpt"
-        )
+            checkpoint_path = f"best_model_gen_{best_generation}.ckpt"
+            self.train_and_save_phenotype(phenotype, train_loader, validation_loader, save_path=checkpoint_path)
+            validation_accuracy = self.load_and_evaluate_phenotype(checkpoint_path, best_overall_individual.architecture, validation_loader)
+            best_overall_individual.evaluate(validation_accuracy)
 
         save_run_results_json("evolutionary_runs.json", run_results)
-
 
 if __name__ == "__main__":
     nas_de = NASDifferentialEvolution(verbose=True)
