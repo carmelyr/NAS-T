@@ -211,10 +211,10 @@ class NASDifferentialEvolution:
         save_run_results_json("evolutionary_runs.json", run_results)
 
 # Load data
-X_train = pd.read_csv('/Users/carmely/GitHub/NAS-T/classification_ozone/X_train.csv')
-y_train = pd.read_csv('/Users/carmely/GitHub/NAS-T/classification_ozone/y_train.csv')
-X_test = pd.read_csv('/Users/carmely/GitHub/NAS-T/classification_ozone/X_test.csv')
-y_test = pd.read_csv('/Users/carmely/GitHub/NAS-T/classification_ozone/y_test.csv')
+X_train = pd.read_csv('classification_ozone/X_train.csv')
+y_train = pd.read_csv('classification_ozone/y_train.csv')
+X_test = pd.read_csv('classification_ozone/X_test.csv')
+y_test = pd.read_csv('classification_ozone/y_test.csv')
 
 if __name__ == "__main__":
     nas_de = NASDifferentialEvolution(verbose=True)
