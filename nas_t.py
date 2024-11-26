@@ -2,55 +2,80 @@ import random
 import copy
 import numpy as np
 import torch
-import torch.nn as nn
+import torch.nn as nn       # neural network module
 from sklearn.model_selection import RepeatedKFold, train_test_split
 import json
 import os
 import time
-import pandas as pd
+import pandas as pd     # data manipulation and analysis library
 import pytorch_lightning as pl
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-from pytorch_lightning import Trainer
+from torch.utils.data import DataLoader, TensorDataset      # for creating (TensorDataset) and loading (DataLoader) data
+from pytorch_lightning import Trainer       # for training models
 
-# Model structure and evolutionary parameters
+
+# ---- Parameters ---- #
 population_size = 20
 generations = 20
-F = 0.7  # Mutation factor
-CR = 0.9  # Crossover rate
-alpha = 0.001  # Penalty for model size
-BETA = 0.0001  # Penalty for training time
+F = 0.7             # mutation factor for the evolutionary algorithm
+CR = 0.9            # crossover rate for the evolutionary algorithm
+alpha = 0.001       # penalty for model size
+BETA = 0.0001       # penalty for training time
 
-n_splits = 5
-n_repeats = 3
-rkf = RepeatedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=42)
 
-# Load data
+# ---- Parameters for repeated k-fold cross-validation ---- #
+# n_folds = 5       # number of folds
+# n_repeats = 3     # number of repeats
+# rkf = RepeatedKFold(n_folds=n_folds, n_repeats=n_repeats, random_state=42)
+
+
+# ---- Load data from the classification_ozone dataset ---- #
+"""
+- X_analysis contains the feature (input) data for training;
+    each row is training example and each column is a feature
+- y_analysis contains the target (output) data for training;
+    each row is the target for a training example
+"""
 X_analysis = pd.read_csv('classification_ozone/X_train.csv')
 y_analysis = pd.read_csv('classification_ozone/y_train.csv')
 X_test = pd.read_csv('classification_ozone/X_test.csv')
 y_test = pd.read_csv('classification_ozone/y_test.csv')
 
-# Split X_analysis and y_analysis into X_train, X_validation, y_train, y_validation
-# 80% training, 20% validation
-X_train, X_validation, y_train, y_validation = train_test_split(
-    X_analysis, y_analysis, test_size=0.2, random_state=42)
 
-# Convert data to PyTorch tensors
-X_train_tensor = torch.tensor(X_train.values, dtype=torch.float32)
+# ---- Split data into training and validation sets ---- #
+# 80% training, 20% validation
+X_train, X_validation, y_train, y_validation = train_test_split(X_analysis, y_analysis, test_size=0.2, random_state=42)
+
+
+# ---- Convert data to PyTorch tensors for training ---- #
+"""
+- X_train_tensor stores input data as a 32-bit float tensor for precise calculations (training data)
+- y_train_tensor stores target data as a long tensor for categorical classification (training data)
+"""
+X_train_tensor = torch.tensor(X_train.values, dtype=torch.float32)      
 y_train_tensor = torch.tensor(y_train.values, dtype=torch.long)
 X_validation_tensor = torch.tensor(X_validation.values, dtype=torch.float32)
 y_validation_tensor = torch.tensor(y_validation.values, dtype=torch.long)
 
-# Create TensorDatasets
+
+# ---- Create TensorDataset for training and validation sets ---- #
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 validation_dataset = TensorDataset(X_validation_tensor, y_validation_tensor)
 
-# Create DataLoaders
+
+# ---- Create DataLoader for training and validation sets ---- #
+"""
+- data will be loaded in batches of 32 samples
+- shuffle=True shuffles the data after each epoch (improves generalization by preventing overfitting) 
+"""
 train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 validation_loader = DataLoader(validation_dataset, batch_size=32)
 
-# Function to save results in a JSON file
+# ---- Save run results to a JSON file ---- #
+"""
+- filename: name of the JSON file that saves the run results
+- run_results: dictionary that contains where to save the run results
+"""
 def save_run_results_json(filename, run_results):
     if os.path.exists(filename):
         with open(filename, 'r') as file:
@@ -72,17 +97,32 @@ def save_run_results_json(filename, run_results):
     with open(filename, 'w') as file:
         json.dump(data, file, indent=4)
 
-# Function to generate a random architecture
+
+# ---- Define the random architecture for the neural network based on the values of the scientific paper---- #
+"""
+- Publication of the paper: https://ieeexplore.ieee.org/document/9206721 (Neaural Architecture Search for Time Series Classification)
+
+- Conv layer detects patterns in the input data by applying filters to the input
+- ZeroOp layer skips or ignores the next layer
+- MaxPooling layer reduces the size of the data by taking only the maximum value in a window
+- Dense layer connects all input neurons to all output neurons
+- Dropout layer randomly sets a fraction of input units to zero to prevent overfitting
+- Activation layer applies an activation function to the output of the previous layer
+"""
 def random_architecture():
     return [
         {'layer': 'Conv', 'filters': random.choice([8, 16, 32, 64, 128, 256]), 'kernel_size': random.choice([3, 5, 8]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
+        {'layer': 'ZeroOp'},
         {'layer': 'MaxPooling', 'pool_size': 3},
         {'layer': 'Dense', 'units': random.choice([4, 16, 32, 64, 128, 256]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
-        {'layer': 'Dropout', 'rate': random.uniform(0, 0.5)}
+        {'layer': 'Dropout', 'rate': random.uniform(0, 0.5)},
+        {'layer': 'Activation', 'activation': random.choice(['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear'])}
     ]
 
+
+# ---- Define the Genotype class ---- #
 class Genotype:
     def __init__(self, architecture=None):
         self.architecture = architecture if architecture else random_architecture()
@@ -95,7 +135,6 @@ class Genotype:
             validation_accuracy = random.uniform(0.4, 0.9)
         self.fitness = fitness_function(self.architecture, validation_accuracy)
         return self.fitness
-
 
     def to_phenotype(self):
         return Phenotype(self.architecture)
@@ -319,7 +358,7 @@ class NASDifferentialEvolution:
             print("Best overall architecture:")
             print(f"Found in generation {best_generation}")
             print(best_overall_individual.architecture)
-            print("Fitness:", best_overall_fitness)
+            print("Fitness:", best_overall_fitness, "\n")
 
         # Train the best overall individual and save the model
         if best_overall_individual:
