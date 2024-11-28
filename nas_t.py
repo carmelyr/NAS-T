@@ -122,20 +122,33 @@ def random_architecture():
     ]
 
 
-# ---- Define the Genotype class ---- #
+# ---- Genotype class ---- #
+# Stores and manipulates the architecture of the neural network
 class Genotype:
+    """
+    - constructor for the Genotype class
+    - called when a new instance of the class is created
+    - self.config: stores the same architecture of the genotype as defined in self.architecture
+    - self.fitness: stores the fitness value of the genotype
+    """
     def __init__(self, architecture=None):
         self.architecture = architecture if architecture else random_architecture()
         self.config = self.architecture
         self.fitness = None
 
+    """
+    - method that calculates the fitness score of the architecture based on its performance
+    """
     def evaluate(self, validation_accuracy=None):
         if validation_accuracy is None:
-            # Assign a random validation accuracy during the initial evaluation
+            # currently assigning a random validation accuracy during the initial evaluation
             validation_accuracy = random.uniform(0.4, 0.9)
         self.fitness = fitness_function(self.architecture, validation_accuracy)
         return self.fitness
 
+    """
+    - method that converts the genotype to a phenotype
+    """
     def to_phenotype(self):
         return Phenotype(self.architecture)
     
