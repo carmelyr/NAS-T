@@ -139,10 +139,12 @@ class Genotype:
     """
     - method that calculates the fitness score of the architecture based on its performance
     """
-    def evaluate(self, validation_accuracy=None):
-        if validation_accuracy is None:
-            # currently assigning a random validation accuracy during the initial evaluation
-            validation_accuracy = random.uniform(0.4, 0.9)
+    def evaluate(self):
+        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+        phenotype = self.to_phenotype()
+        trainer = pl.Trainer(max_epochs=20, logger=False, enable_checkpointing=False, enable_progress_bar=False)
+        trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
+        validation_accuracy = trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).item()
         self.fitness = fitness_function(self.architecture, validation_accuracy)
         return self.fitness
 
@@ -227,7 +229,7 @@ class Phenotype(pl.LightningModule):
         logits = self.forward(x)
         y = y.view(-1)
         loss = self.loss_fn(logits, y)
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, prog_bar=False)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -236,9 +238,9 @@ class Phenotype(pl.LightningModule):
         y = y.view(-1)
         loss = self.loss_fn(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log('val_loss', loss, prog_bar=True)
-        self.log('val_acc', acc, prog_bar=True)
-        return loss
+        self.log('val_loss', loss, prog_bar=False)
+        self.log('val_acc', acc, prog_bar=False)
+        return acc
 
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=1e-3)
@@ -372,14 +374,6 @@ class NASDifferentialEvolution:
             print(f"Found in generation {best_generation}")
             print(best_overall_individual.architecture)
             print("Fitness:", best_overall_fitness, "\n")
-
-        # Train the best overall individual and save the model
-        if best_overall_individual:
-            phenotype = best_overall_individual.to_phenotype()
-            checkpoint_path = f"best_model_gen_{best_generation}.ckpt"
-            self.train_and_save_phenotype(phenotype, train_loader, validation_loader, save_path=checkpoint_path)
-            validation_accuracy = self.load_and_evaluate_phenotype(checkpoint_path, best_overall_individual.architecture, validation_loader)
-            best_overall_individual.evaluate(validation_accuracy)
 
         save_run_results_json("evolutionary_runs.json", run_results)
 
