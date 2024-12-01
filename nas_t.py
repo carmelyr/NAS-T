@@ -2,16 +2,16 @@ import random
 import copy
 import numpy as np
 import torch
-import torch.nn as nn                                   # neural network module
+import torch.nn as nn                                                   # neural network module
 from sklearn.model_selection import RepeatedKFold, train_test_split
 import json
 import os
 import time
-import pandas as pd                                     # data manipulation and analysis library
+import pandas as pd                                                     # data manipulation and analysis library
 import pytorch_lightning as pl
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset  # for creating (TensorDataset) and loading (DataLoader) data
-from pytorch_lightning import Trainer                   # for training models
+from torch.utils.data import DataLoader, TensorDataset                  # for creating (TensorDataset) and loading (DataLoader) data
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping    # stops training when a monitored quantity has stopped improving
 
 
 # ---- Parameters ---- #
@@ -142,8 +142,11 @@ class Genotype:
     def evaluate(self):
         train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
         phenotype = self.to_phenotype()
-        trainer = pl.Trainer(max_epochs=20, logger=False, enable_checkpointing=False, enable_progress_bar=False)
+        early_stop_callback = EarlyStopping(monitor='val_loss', patience=3, mode='min')
+        # callbacks=[early_stop_callback]: stops training when the validation loss has not improved for the last 3 epochs
+        trainer = pl.Trainer(max_epochs=20, logger=False, enable_checkpointing=False, enable_progress_bar=False, callbacks=[early_stop_callback])
         trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
+        # trainer.callback_metrics.get('val_acc', torch.tensor(0.0)): gets the validation accuracy from the trainer
         validation_accuracy = trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).item()
         self.fitness = fitness_function(self.architecture, validation_accuracy)
         return self.fitness
@@ -287,11 +290,18 @@ class Phenotype(pl.LightningModule):
         - (logits.argmax == y): compares the predicted class with the target class
         - .float(): converts the result to a floating-point number
         """
-        acc = (logits.argmax(dim=1) == y).float().mean()    # calculates the accuracy of the model
+        acc = (logits.argmax(dim=1) == y).float().mean()   # calculates the accuracy of the model
         self.log('val_loss', loss, prog_bar=True)          # logs the validation loss
         self.log('val_acc', acc, prog_bar=True)            # logs the validation accuracy
-        return acc
-
+        return {'val_loss': loss, 'val_acc': acc}
+    
+    """
+    - method that defines the validation epoch end for the neural network
+    - calculates the average validation accuracy of the model
+    """
+    def on_validation_epoch_end(self):
+        avg_acc = self.trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).mean()
+        self.log('avg_val_acc', avg_acc, prog_bar=True)
 
     """
     - method that specifies how the model's parameters should be updated during training
@@ -320,7 +330,8 @@ def fitness_function(architecture, validation_accuracy):
     accuracy_component = validation_accuracy
     size_penalty = alpha * model_size
     time_penalty = BETA * training_time
-    fitness = accuracy_component - size_penalty - time_penalty
+    randomness = random.uniform(0, 0.01)    # slight randomness for the fitness score
+    fitness = accuracy_component - size_penalty - time_penalty + randomness
     return max(0.0, fitness)
 
 
@@ -343,6 +354,7 @@ class NASDifferentialEvolution:
         return [Genotype() for _ in range(self.population_size)]
 
 
+
     """
     - method that mutates the genotype of an individual in the population to create a new individual (mutant)
     - parent1: first parent genotype
@@ -362,7 +374,8 @@ class NASDifferentialEvolution:
         for i in range(len(mutant)):
             if random.random() < F:
                 if 'filters' in mutant[i]:
-                    mutated_filter = int(parent1.architecture[i]['filters'] + F * (parent2.architecture[i]['filters'] - parent3.architecture[i]['filters']))
+                    # random.uniform(1.0, 2.0): generates a random number between 1.0 and 2.0 in order to increase or decrease the filter size
+                    mutated_filter = int(parent1.architecture[i]['filters'] + F * (parent2.architecture[i]['filters'] - parent3.architecture[i]['filters']) * random.uniform(1.0, 2.0))
                     # key=lambda x: abs(x - mutated_filter): finds the closest value to the mutated filter
                     mutant[i]['filters'] = min(filter_options, key=lambda x: abs(x - mutated_filter))
                 if 'units' in mutant[i]:
@@ -390,21 +403,20 @@ class NASDifferentialEvolution:
     - save_path: path to save the phenotype
     """
     def train_and_save_phenotype(self, phenotype, train_loader, validation_loader, save_path):
-        trainer = pl.Trainer(max_epochs=10)                                                         # trains the model for 10 epochs
+        trainer = pl.Trainer(max_epochs=20)                                                         # trains the model for 10 epochs
         trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)   # fits the model to the training data
         trainer.save_checkpoint(save_path)                                                          # saves the model to a checkpoint file
-
 
     """
     - method that loads and evaluates its accuracy on the validation set
     """
     def load_and_evaluate_phenotype(self, phenotype_path, genotype, validation_loader):
         phenotype = Phenotype.load_from_checkpoint(phenotype_path, genotype=genotype)
-        phenotype.eval()            # sets the model to evaluation mode
+        phenotype.eval()                    # sets the model to evaluation mode
 
-        correct = 0                 # number of correct predictions
-        total = 0                   # total number of predictions
-        with torch.no_grad():       # disables gradient calculation
+        correct = 0                         # number of correct predictions
+        total = 0                           # total number of predictions
+        with torch.no_grad():               # disables gradient calculation
             for batch in validation_loader:
                 x, y = batch
                 logits = phenotype(x)
@@ -445,7 +457,7 @@ class NASDifferentialEvolution:
             """
             for i in range(self.population_size):
                 candidates = list(range(self.population_size))
-                candidates.remove(i)    # removes the current individual from the list of candidates
+                candidates.remove(i)                                    # removes the current individual from the list of candidates
                 parent1, parent2, parent3 = [self.population[idx] for idx in random.sample(candidates, 3)]
                 mutant = self.mutate(parent1, parent2, parent3)
                 offspring = self.crossover(self.population[i], mutant)  # creates an offspring by performing crossover between the parent and the mutant
