@@ -330,8 +330,8 @@ def fitness_function(architecture, validation_accuracy):
     accuracy_component = validation_accuracy
     size_penalty = alpha * model_size
     time_penalty = BETA * training_time
-    randomness = random.uniform(0, 0.01)    # slight randomness for the fitness score
-    fitness = accuracy_component - size_penalty - time_penalty + randomness
+    #randomness = random.uniform(0, 0.01)    # slight randomness for the fitness score
+    fitness = accuracy_component - size_penalty - time_penalty # + randomness
     return max(0.0, fitness)
 
 
@@ -354,7 +354,6 @@ class NASDifferentialEvolution:
         return [Genotype() for _ in range(self.population_size)]
 
 
-
     """
     - method that mutates the genotype of an individual in the population to create a new individual (mutant)
     - parent1: first parent genotype
@@ -375,7 +374,7 @@ class NASDifferentialEvolution:
             if random.random() < F:
                 if 'filters' in mutant[i]:
                     # random.uniform(1.0, 2.0): generates a random number between 1.0 and 2.0 in order to increase or decrease the filter size
-                    mutated_filter = int(parent1.architecture[i]['filters'] + F * (parent2.architecture[i]['filters'] - parent3.architecture[i]['filters']) * random.uniform(1.0, 2.0))
+                    mutated_filter = int(parent1.architecture[i]['filters'] + F * (parent2.architecture[i]['filters'] - parent3.architecture[i]['filters'])) #* random.uniform(1.0, 2.0))
                     # key=lambda x: abs(x - mutated_filter): finds the closest value to the mutated filter
                     mutant[i]['filters'] = min(filter_options, key=lambda x: abs(x - mutated_filter))
                 if 'units' in mutant[i]:
@@ -436,6 +435,7 @@ class NASDifferentialEvolution:
         best_overall_fitness = float('-inf')
         best_overall_individual = None
         best_generation = -1
+        best_architectures = []
 
         """
         - each iteration represents a generation where the population evolves
@@ -484,6 +484,14 @@ class NASDifferentialEvolution:
                 best_overall_individual = best_individual
                 best_generation = generation + 1
 
+            """
+            - end_time: tracks how long the current generation took to complete
+            """
+            end_time = time.perf_counter()
+            runtime = end_time - start_time
+            if self.verbose:
+                print(f"Runtime for generation {generation + 1}: {runtime:.6f} seconds\n")
+
             generation_result = {
                 "generation": generation + 1,
                 "best_fitness": best_fitness,
@@ -492,18 +500,26 @@ class NASDifferentialEvolution:
             }
             run_results["generations"].append(generation_result)
 
-            """
-            - end_time: tracks how long the current generation took to complete
-            """
-            end_time = time.perf_counter()
-            if self.verbose:
-                print(f"Runtime for generation {generation + 1}: {end_time - start_time:.6f} seconds\n")
+            best_generations = {
+                "generation": generation + 1,
+                "best_fitness": best_fitness,
+                "best_architecture": best_individual.architecture,
+                "runtime": runtime
+            }
+            best_architectures.append(best_generations)
 
         if self.verbose:
             print("Best overall architecture:")
             print(f"Found in generation {best_generation}")
             print(best_overall_individual.architecture)
             print("Fitness:", best_overall_fitness, "\n")
+
+            print("Best architecture in each generation:")
+            for generation in best_architectures:
+                print(f"Generation", generation['generation'])
+                print(f"Best architecture:", generation['best_architecture'])
+                print("Fitness:", generation['best_fitness'])
+                print("Runtime:", generation['runtime'], "seconds\n")
 
         save_run_results_json("evolutionary_runs.json", run_results)
 
