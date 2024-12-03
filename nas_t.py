@@ -15,10 +15,10 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping    # stops 
 
 
 # ---- Parameters ---- #
-population_size = 20
+population_size = 30
 generations = 20
-F = 0.7             # mutation factor for the evolutionary algorithm
-CR = 0.9            # crossover rate for the evolutionary algorithm
+F = 0.8             # mutation factor for the evolutionary algorithm
+CR = 0.8            # crossover rate for the evolutionary algorithm
 alpha = 0.001       # penalty for model size
 BETA = 0.0001       # penalty for training time
 
@@ -330,8 +330,8 @@ def fitness_function(architecture, validation_accuracy):
     accuracy_component = validation_accuracy
     size_penalty = alpha * model_size
     time_penalty = BETA * training_time
-    #randomness = random.uniform(0, 0.01)    # slight randomness for the fitness score
-    fitness = accuracy_component - size_penalty - time_penalty # + randomness
+    noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
+    fitness = accuracy_component - size_penalty - time_penalty + noise
     return max(0.0, fitness)
 
 
