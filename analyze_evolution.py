@@ -1,27 +1,26 @@
 import json
 import pandas as pd
 import matplotlib.pyplot as plt
-import mplcursors  # Import mplcursors for interactive annotations
-import matplotlib.lines as mlines  # Import for custom legend lines
+import mplcursors
+import matplotlib.lines as mlines
+import matplotlib.cm as cm
+import numpy as np
 
-# Load the JSON file
+# ---- Loads the data from the evolutionary_runs.json file ---- #
 with open("evolutionary_runs.json") as file:
     data = json.load(file)
 
-# Extract key metrics across generations
+# ---- Extracts the fitness data from the JSON file ---- #
 fitness_data = []
 for run in data:
     for generation in run['generations']:
-        # Add the best fitness value of the generation
         fitness_data.append({
-            "run": int(run['run_id']),  # Make sure run_id is an integer
+            "run": int(run['run_id']),
             "generation": int(generation['generation']),
             "fitness": generation['best_fitness'],
             "type": "Best"
         })
-        # Check if 'all_fitnesses' key exists in the generation dictionary
         if 'all_fitnesses' in generation:
-            # Add all other fitness values of the generation
             for fitness in generation['all_fitnesses']:
                 fitness_data.append({
                     "run": int(run['run_id']),
@@ -30,49 +29,55 @@ for run in data:
                     "type": "Individual"
                 })
 
-# Convert to DataFrame for easier manipulation and analysis
+# ---- Converts the fitness data into a pandas DataFrame ---- #
 df = pd.DataFrame(fitness_data)
 
-# Calculate total runs and best fitness value
-total_runs = df['run'].nunique()  # Corrected: Use nunique to accurately count the number of distinct runs
+total_runs = df['run'].nunique()
 best_fitness_row = df[df['type'] == 'Best'].loc[df['fitness'].idxmax()]
 best_run_id = best_fitness_row['run']
 best_generation = best_fitness_row['generation']
 best_fitness_value = best_fitness_row['fitness']
 
-# Plot fitness over generations using scatter plot
-plt.figure(figsize=(12, 7))
+# ---- Plots the fitness evolution over generations ---- #
+plt.figure(figsize=(13, 7))
 
-# Plot all individual fitnesses in light pink for each generation
+# ---- Colors for each run ---- #
+colors = cm.get_cmap('tab10', total_runs)
+
+# ---- Scatter plot for each run ---- #
 for run_id, group in df[df['type'] == 'Individual'].groupby("run"):
-    plt.scatter(group['generation'], group['fitness'], s=20, alpha=0.4, color='lightpink')
+    plt.scatter(group['generation'], group['fitness'], s=20, alpha=0.4, color=colors(run_id % colors.N))
 
-# Plot best fitnesses in darker color to distinguish from individual points
+# ---- Scatter plot for the best individual of each run ---- #
 for run_id, group in df[df['type'] == 'Best'].groupby("run"):
-    scatter = plt.scatter(group['generation'], group['fitness'], s=40, alpha=0.8, color='deeppink')
+    scatter = plt.scatter(group['generation'], group['fitness'], s=40, alpha=0.8, color=colors(run_id % colors.N), label=f'Run {run_id} Best')
 
 plt.xlabel("Generation")
 plt.ylabel("Fitness")
 
-# Update plot title with total number of runs and which run and generation achieved the best fitness
-plt.title(f"Fitness Evolution Over Generations\nTotal Runs: {total_runs}\n Best Fitness Achieved in Run {best_run_id} for Generation {best_generation} (Fitness: {best_fitness_value:.4f})")
+# ---- Sets the y-axis limits to [0, 1] ---- #
+plt.ylim(0, 1.0)
 
-# Set x-ticks to be integers for each generation
+plt.title(f"Fitness Evolution Over Generations\nTotal Runs: {total_runs}\n Best Fitness Achieved in Run {best_run_id} for Generation {best_generation} (Fitness: {best_fitness_value:.6f})")
+
+# ---- Adds a legend to the plot ---- #
 plt.xticks(ticks=sorted(df['generation'].unique()))
+run_markers = []
+for run_id in range(total_runs):
+    run_markers.append(mlines.Line2D([], [], color=colors(run_id % colors.N), marker='o', linestyle='None', markersize=5, alpha=0.4, label=f'Run {run_id + 1} Individual'))
+    run_markers.append(mlines.Line2D([], [], color=colors(run_id % colors.N), marker='o', linestyle='None', markersize=5, alpha=0.8, label=f'Run {run_id + 1} Best'))
 
-# Add a fixed legend in the bottom left corner
-light_pink_marker = mlines.Line2D([], [], color='lightpink', marker='o', linestyle='None', markersize=8, alpha=0.4, label='Individual Fitness (All Runs)')
-dark_pink_marker = mlines.Line2D([], [], color='deeppink', marker='o', linestyle='None', markersize=8, alpha=0.8, label='Best Fitness (All Runs)')
-plt.legend(handles=[light_pink_marker, dark_pink_marker], loc='lower left')
+plt.legend(handles=run_markers, loc='lower left', fontsize=8)
 
-# Add interactive cursor for displaying fitness values on hover
-cursor = mplcursors.cursor(hover=True)  # Enable cursor to hover
-cursor.connect("add", lambda sel: sel.annotation.set_text(f"Fitness: {sel.target[1]:.4f}"))
+# ---- Adds annotations to the plot ---- #
+cursor = mplcursors.cursor(hover=True)
+cursor.connect("add", lambda sel: sel.annotation.set_text(f"Fitness: {sel.target[1]:.6f}"))
 
-# Customize the annotation appearance
+# ---- Adds a pink background to the annotations ---- #
 @cursor.connect("add")
 def on_add(sel):
     sel.annotation.get_bbox_patch().set(fc="lightpink", alpha=0.8)
     sel.annotation.set_fontsize(10)
 
 plt.show()
+
