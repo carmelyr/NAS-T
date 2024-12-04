@@ -12,12 +12,15 @@ import pytorch_lightning as pl
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset                  # for creating (TensorDataset) and loading (DataLoader) data
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping    # stops training when a monitored quantity has stopped improving
+import torchmetrics
+from torchmetrics import Metric
+from sklearn.preprocessing import StandardScaler
 
 
 # ---- Parameters ---- #
 population_size = 30
 generations = 20
-F = 0.8             # mutation factor for the evolutionary algorithm
+F = 0.9             # mutation factor for the evolutionary algorithm
 CR = 0.8            # crossover rate for the evolutionary algorithm
 alpha = 0.001       # penalty for model size
 BETA = 0.0001       # penalty for training time
@@ -41,35 +44,64 @@ y_analysis = pd.read_csv('classification_ozone/y_train.csv')
 X_test = pd.read_csv('classification_ozone/X_test.csv')
 y_test = pd.read_csv('classification_ozone/y_test.csv')
 
+# ---- Fill NaNs with column means ---- #
+X_analysis.fillna(X_analysis.mean(), inplace=True)
+X_test.fillna(X_test.mean(), inplace=True)
 
 # ---- Split data into training and validation sets ---- #
 # 80% training, 20% validation
 X_train, X_validation, y_train, y_validation = train_test_split(X_analysis, y_analysis, test_size=0.2, random_state=42)
 
+# ---- Scale the data ---- #
+scaler = StandardScaler()
+
+X_train = scaler.fit_transform(X_train)
+X_validation = scaler.transform(X_validation)
+X_test = scaler.transform(X_test)
 
 # ---- Convert data to PyTorch tensors for training ---- #
 """
 - X_train_tensor stores input data as a 32-bit float tensor for precise calculations (training data)
 - y_train_tensor stores target data as a long tensor for categorical classification (training data)
 """
-X_train_tensor = torch.tensor(X_train.values, dtype=torch.float32)      
-y_train_tensor = torch.tensor(y_train.values, dtype=torch.long)
-X_validation_tensor = torch.tensor(X_validation.values, dtype=torch.float32)
-y_validation_tensor = torch.tensor(y_validation.values, dtype=torch.long)
+X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+y_train_tensor = torch.tensor(y_train.to_numpy().flatten(), dtype=torch.long)
+X_validation_tensor = torch.tensor(X_validation, dtype=torch.float32)
+y_validation_tensor = torch.tensor(y_validation.to_numpy().flatten(), dtype=torch.long)
 
+# ---- Normalize input data ---- #
+mean = X_train_tensor.mean(dim=0)
+std = X_train_tensor.std(dim=0)
+
+X_train_tensor = (X_train_tensor - mean) / std
+X_validation_tensor = (X_validation_tensor - mean) / std
+
+# Check for NaNs in input data
+assert not torch.isnan(X_train_tensor).any(), "NaN found in training data"
+assert not torch.isnan(X_validation_tensor).any(), "NaN found in validation data"
+
+# Check for NaNs in labels
+assert not torch.isnan(y_train_tensor).any(), "NaN found in training labels"
+assert not torch.isnan(y_validation_tensor).any(), "NaN found in validation labels"
 
 # ---- Create TensorDataset for training and validation sets ---- #
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 validation_dataset = TensorDataset(X_validation_tensor, y_validation_tensor)
 
+# ---- Check for class balance ---- #
+print("Class distribution in y_train:")
+print(y_train_tensor.unique(return_counts=True))
+
+print("Class distribution in y_validation:")
+print(y_validation_tensor.unique(return_counts=True))
 
 # ---- Create DataLoader for training and validation sets ---- #
 """
 - data will be loaded in batches of 32 samples
 - shuffle=True shuffles the data after each epoch (improves generalization by preventing overfitting) 
 """
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-validation_loader = DataLoader(validation_dataset, batch_size=32)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=0)
+validation_loader = DataLoader(validation_dataset, batch_size=64, shuffle=False, num_workers=0)
 
 # ---- Save run results to a JSON file ---- #
 """
@@ -111,13 +143,13 @@ def save_run_results_json(filename, run_results):
 """
 def random_architecture():
     return [
-        {'layer': 'Conv', 'filters': random.choice([8, 16, 32, 64, 128, 256]), 'kernel_size': random.choice([3, 5, 8]),
+        {'layer': 'Conv', 'filters': random.choice([8, 16, 64]), 'kernel_size': random.choice([3, 5]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
         {'layer': 'ZeroOp'},
-        {'layer': 'MaxPooling', 'pool_size': 3},
-        {'layer': 'Dense', 'units': random.choice([4, 16, 32, 64, 128, 256]),
+        {'layer': 'MaxPooling', 'pool_size': random.choice([2, 3])},
+        {'layer': 'Dense', 'units': random.choice([16, 32, 64]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
-        {'layer': 'Dropout', 'rate': random.uniform(0, 0.5)},
+        {'layer': 'Dropout', 'rate': random.uniform(0.1, 0.5)},
         {'layer': 'Activation', 'activation': random.choice(['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear'])}
     ]
 
@@ -140,12 +172,12 @@ class Genotype:
     - method that calculates the fitness score of the architecture based on its performance
     """
     def evaluate(self):
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
         phenotype = self.to_phenotype()
-        early_stop_callback = EarlyStopping(monitor='val_loss', patience=3, mode='min')
+        early_stop_callback = EarlyStopping(monitor='val_acc', patience=10, mode='max')
         # callbacks=[early_stop_callback]: stops training when the validation loss has not improved for the last 3 epochs
-        trainer = pl.Trainer(max_epochs=20, logger=False, enable_checkpointing=False, enable_progress_bar=False, callbacks=[early_stop_callback])
+        trainer = pl.Trainer(min_epochs=5, max_epochs=20, logger=False, enable_checkpointing=False, enable_progress_bar=False, callbacks=[early_stop_callback], gradient_clip_val=0.5, gradient_clip_algorithm='norm')
         trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
+        trainer.validate(phenotype, dataloaders=validation_loader)
         # trainer.callback_metrics.get('val_acc', torch.tensor(0.0)): gets the validation accuracy from the trainer
         validation_accuracy = trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).item()
         self.fitness = fitness_function(self.architecture, validation_accuracy)
@@ -157,6 +189,9 @@ class Genotype:
     def to_phenotype(self):
         return Phenotype(self.architecture)
     
+def init_weights(m):
+    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
+        nn.init.xavier_uniform_(m.weight)
 
 # ---- Phenotype class ---- #
 """
@@ -176,7 +211,9 @@ class Phenotype(pl.LightningModule):
         if genotype:
             self.genotype = genotype
             self.model = self.build_model_from_genotype(genotype)
+            self.model.apply(init_weights)
         self.loss_fn = nn.CrossEntropyLoss()
+        self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=2)
 
     """
     - method that builds the neural network model based on the genotype
@@ -231,6 +268,8 @@ class Phenotype(pl.LightningModule):
             elif layer['layer'] == 'Dropout':
                 layers.append(nn.Dropout(layer['rate']))
 
+        layers.append(nn.Linear(input_channels, 2))
+
         return nn.Sequential(*layers)
     
     """
@@ -268,11 +307,21 @@ class Phenotype(pl.LightningModule):
     """
     def training_step(self, batch, batch_idx):
         x, y = batch
+        x = x.reshape(x.size(0), -1)
         logits = self.forward(x)                        # passes the input data through the neural network (predictions) 
         y = y.view(-1)                                  # reshapes the target data to match the predictions
         loss = self.loss_fn(logits, y)                  # calculates the loss between the predictions and the target data
+        preds = logits.argmax(dim=1)
+        acc = self.accuracy(preds, y)                   # uses torchmetrics.Accuracy to calculate accuracy
         self.log('train_loss', loss, prog_bar=True)     # logs the training loss
+        self.log('train_acc', acc, prog_bar=True)       # logs the training accuracy
         return loss
+    
+    """
+    - method that defines the training epoch end for the neural network
+    def training_epoch_end(self, outputs):
+        avg_loss = torch.stack([x for x in outputs]).mean()
+        self.log('avg_train_loss', avg_loss, prog_bar = False)"""
 
     """
     - method that defines the validation step for the neural network
@@ -281,27 +330,35 @@ class Phenotype(pl.LightningModule):
     """
     def validation_step(self, batch, batch_idx):
         x, y = batch
+        x = x.reshape(x.size(0), -1)
         logits = self.forward(x)
         y = y.view(-1)
         loss = self.loss_fn(logits, y)                      # calculates the loss between the predictions and the target data
-        """
-        - logits.argmax: returns the index of the maximum value in the predictions
-        - y: target data
-        - (logits.argmax == y): compares the predicted class with the target class
-        - .float(): converts the result to a floating-point number
-        """
-        acc = (logits.argmax(dim=1) == y).float().mean()   # calculates the accuracy of the model
-        self.log('val_loss', loss, prog_bar=True)          # logs the validation loss
-        self.log('val_acc', acc, prog_bar=True)            # logs the validation accuracy
+        preds = logits.argmax(dim=1)    
+
+        # debugging logits and predictions
+        #print(f"Logits: {logits[:5]}")
+        #print(f"Predictions: {preds[:5]}")
+        #print(f"Labels: {y[:5]}")
+
+        acc = self.accuracy(preds, y)                               # uses torchmetrics.Accuracy to calculate accuracy
+        self.log('val_loss', loss, prog_bar=True)                   # logs the validation loss
+        self.log('val_acc', acc, prog_bar=True)                     # logs the validation accuracy
         return {'val_loss': loss, 'val_acc': acc}
+    
+    def on_train_epoch_start(self):
+        self.accuracy.reset()
+
+    def on_validation_epoch_start(self):
+        self.accuracy.reset()
     
     """
     - method that defines the validation epoch end for the neural network
     - calculates the average validation accuracy of the model
     """
     def on_validation_epoch_end(self):
-        avg_acc = self.trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).mean()
-        self.log('avg_val_acc', avg_acc, prog_bar=True)
+        self.log('epoch_val_acc', self.accuracy.compute(), prog_bar=True)
+        self.accuracy.reset()
 
     """
     - method that specifies how the model's parameters should be updated during training
@@ -310,7 +367,7 @@ class Phenotype(pl.LightningModule):
     - improves predictions by using past steps to guide the updates smoothly
     """
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=1e-3)
+        return optim.Adam(self.parameters(), lr=1e-4)
 
 """
 - method that calculates the fitness score of the architecture based on its performance
@@ -330,8 +387,8 @@ def fitness_function(architecture, validation_accuracy):
     accuracy_component = validation_accuracy
     size_penalty = alpha * model_size
     time_penalty = BETA * training_time
-    noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
-    fitness = accuracy_component - size_penalty - time_penalty + noise
+    #noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
+    fitness = accuracy_component - size_penalty - time_penalty #+ noise
     return max(0.0, fitness)
 
 
@@ -423,6 +480,7 @@ class NASDifferentialEvolution:
                 correct += (predictions == y.view(-1)).sum().item() # compares the predicted class with the target class
                 total += y.size(0)                                  # updates the total number of predictions; y.size(0) returns the batch size of the first dimesnion of y
 
+        phenotype.train()                                           # sets the model back to training mode
         validation_accuracy = correct / total                       # calculates the accuracy of the model on the validation set
         return validation_accuracy
 
@@ -475,9 +533,11 @@ class NASDifferentialEvolution:
             self.population = new_population
             best_individual = max(self.population, key=lambda ind: ind.fitness)
             best_fitness = best_individual.fitness
+            best_accuracy = best_individual.evaluate()
 
             if self.verbose:
                 print(f"Best fitness in generation {generation + 1}: {best_fitness}")
+                print(f"Best accuracy in generation {generation + 1}: {best_accuracy}")
 
             if best_fitness > best_overall_fitness:
                 best_overall_fitness = best_fitness
@@ -495,6 +555,7 @@ class NASDifferentialEvolution:
             generation_result = {
                 "generation": generation + 1,
                 "best_fitness": best_fitness,
+                "best_accuracy": best_accuracy,
                 "best_architecture": best_individual.architecture,
                 "all_fitnesses": generation_fitnesses
             }
@@ -503,6 +564,7 @@ class NASDifferentialEvolution:
             best_generations = {
                 "generation": generation + 1,
                 "best_fitness": best_fitness,
+                "best_accuracy": best_accuracy,
                 "best_architecture": best_individual.architecture,
                 "runtime": runtime
             }
@@ -512,13 +574,15 @@ class NASDifferentialEvolution:
             print("Best overall architecture:")
             print(f"Found in generation {best_generation}")
             print(best_overall_individual.architecture)
-            print("Fitness:", best_overall_fitness, "\n")
+            print("Fitness:", best_overall_fitness)
+            print("Accuracy:", best_overall_fitness - alpha * sum(layer.get('filters', 0) + layer.get('units', 0) for layer in best_overall_individual.architecture))
 
             print("Best architecture in each generation:")
             for generation in best_architectures:
                 print(f"Generation", generation['generation'])
                 print(f"Best architecture:", generation['best_architecture'])
                 print("Fitness:", generation['best_fitness'])
+                print(f"Accuracy: {generation['best_accuracy']}")
                 print("Runtime:", generation['runtime'], "seconds\n")
 
         save_run_results_json("evolutionary_runs.json", run_results)
