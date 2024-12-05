@@ -14,16 +14,16 @@ from torch.utils.data import DataLoader, TensorDataset                  # for cr
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping    # stops training when a monitored quantity has stopped improving
 import torchmetrics
 from torchmetrics import Metric
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
 
 # ---- Parameters ---- #
-population_size = 30
-generations = 20
-F = 0.9             # mutation factor for the evolutionary algorithm
-CR = 0.8            # crossover rate for the evolutionary algorithm
-alpha = 0.001       # penalty for model size
-BETA = 0.0001       # penalty for training time
+population_size = 10
+generations = 5
+F = 0.85             # mutation factor for the evolutionary algorithm
+CR = 0.9            # crossover rate for the evolutionary algorithm
+alpha = 0.0001       # penalty for model size
+BETA = 0.00001       # penalty for training time
 
 
 # ---- Parameters for repeated k-fold cross-validation ---- #
@@ -54,6 +54,8 @@ X_train, X_validation, y_train, y_validation = train_test_split(X_analysis, y_an
 
 # ---- Scale the data ---- #
 scaler = StandardScaler()
+#scaler = MinMaxScaler()  # Normalize to [0, 1]
+# scaler = RobustScaler()  # Less sensitive to outliers
 
 X_train = scaler.fit_transform(X_train)
 X_validation = scaler.transform(X_validation)
@@ -143,11 +145,11 @@ def save_run_results_json(filename, run_results):
 """
 def random_architecture():
     return [
-        {'layer': 'Conv', 'filters': random.choice([8, 16, 64]), 'kernel_size': random.choice([3, 5]),
+        {'layer': 'Conv', 'filters': random.choice([8, 16, 32, 64, 128, 256]), 'kernel_size': random.choice([3, 5, 8]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
         {'layer': 'ZeroOp'},
         {'layer': 'MaxPooling', 'pool_size': random.choice([2, 3])},
-        {'layer': 'Dense', 'units': random.choice([16, 32, 64]),
+        {'layer': 'Dense', 'units': random.choice([16, 32, 64, 128, 256]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
         {'layer': 'Dropout', 'rate': random.uniform(0.1, 0.5)},
         {'layer': 'Activation', 'activation': random.choice(['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear'])}
@@ -173,9 +175,9 @@ class Genotype:
     """
     def evaluate(self):
         phenotype = self.to_phenotype()
-        early_stop_callback = EarlyStopping(monitor='val_acc', patience=10, mode='max')
+        early_stop_callback = EarlyStopping(monitor='val_acc', patience=15, mode='max')
         # callbacks=[early_stop_callback]: stops training when the validation loss has not improved for the last 3 epochs
-        trainer = pl.Trainer(min_epochs=5, max_epochs=20, logger=False, enable_checkpointing=False, enable_progress_bar=False, callbacks=[early_stop_callback], gradient_clip_val=0.5, gradient_clip_algorithm='norm')
+        trainer = pl.Trainer(min_epochs=10, max_epochs=30, logger=False, enable_checkpointing=False, enable_progress_bar=False, callbacks=[early_stop_callback], gradient_clip_val=0.5, gradient_clip_algorithm='norm')
         trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
         trainer.validate(phenotype, dataloaders=validation_loader)
         # trainer.callback_metrics.get('val_acc', torch.tensor(0.0)): gets the validation accuracy from the trainer
@@ -575,7 +577,7 @@ class NASDifferentialEvolution:
             print(f"Found in generation {best_generation}")
             print(best_overall_individual.architecture)
             print("Fitness:", best_overall_fitness)
-            print("Accuracy:", best_overall_fitness - alpha * sum(layer.get('filters', 0) + layer.get('units', 0) for layer in best_overall_individual.architecture))
+            print("Accuracy:", best_overall_fitness - alpha * sum(layer.get('filters', 0) + layer.get('units', 0) for layer in best_overall_individual.architecture), "\n")
 
             print("Best architecture in each generation:")
             for generation in best_architectures:

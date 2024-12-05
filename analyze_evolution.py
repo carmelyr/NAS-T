@@ -5,6 +5,7 @@ import mplcursors
 import matplotlib.lines as mlines
 import matplotlib.cm as cm
 import numpy as np
+from matplotlib.ticker import MaxNLocator
 
 # ---- Loads the data from the evolutionary_runs.json file ---- #
 with open("evolutionary_runs.json") as file:
@@ -58,6 +59,9 @@ plt.ylabel("Fitness")
 
 # ---- Sets the y-axis limits to [0, 1] ---- #
 plt.ylim(0, 1.0)
+
+# ---- Set the x-axis to use integer ticks ---- #
+plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
 
 plt.title(f"Fitness Evolution Over Generations\nTotal Runs: {total_runs}\n Best Fitness Achieved in Run {best_run_id} for Generation {best_generation} (Fitness: {best_fitness_value:.6f})")
 
