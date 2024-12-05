@@ -2,26 +2,26 @@ import random
 import copy
 import numpy as np
 import torch
-import torch.nn as nn                                                   # neural network module
+import torch.nn as nn                                                           # neural network module
 from sklearn.model_selection import RepeatedKFold, train_test_split
 import json
 import os
 import time
-import pandas as pd                                                     # data manipulation and analysis library
+import pandas as pd                                                             # data manipulation and analysis library
 import pytorch_lightning as pl
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset                  # for creating (TensorDataset) and loading (DataLoader) data
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping    # stops training when a monitored quantity has stopped improving
+from torch.utils.data import DataLoader, TensorDataset                          # for creating (TensorDataset) and loading (DataLoader) data
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping            # stops training when a monitored quantity has stopped improving
 import torchmetrics
-from torchmetrics import Metric
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+#from torchmetrics import Metric
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler    # for scaling the data
 
 
 # ---- Parameters ---- #
-population_size = 10
-generations = 5
+population_size = 30
+generations = 15
 F = 0.85             # mutation factor for the evolutionary algorithm
-CR = 0.9            # crossover rate for the evolutionary algorithm
+CR = 0.9             # crossover rate for the evolutionary algorithm
 alpha = 0.0001       # penalty for model size
 BETA = 0.00001       # penalty for training time
 
@@ -53,10 +53,16 @@ X_test.fillna(X_test.mean(), inplace=True)
 X_train, X_validation, y_train, y_validation = train_test_split(X_analysis, y_analysis, test_size=0.2, random_state=42)
 
 # ---- Scale the data ---- #
-scaler = StandardScaler()
-#scaler = MinMaxScaler()  # Normalize to [0, 1]
-# scaler = RobustScaler()  # Less sensitive to outliers
+scaler = StandardScaler()       # standardizes features by removing the mean and scaling to unit variance
+#scaler = MinMaxScaler()        # normalizes to [0, 1]
+#scaler = RobustScaler()        # less sensitive to outliers
 
+
+"""
+- X_train: scales the training data
+- X_validation: scales the validation data
+- X_test: scales the test data
+"""
 X_train = scaler.fit_transform(X_train)
 X_validation = scaler.transform(X_validation)
 X_test = scaler.transform(X_test)
@@ -65,6 +71,8 @@ X_test = scaler.transform(X_test)
 """
 - X_train_tensor stores input data as a 32-bit float tensor for precise calculations (training data)
 - y_train_tensor stores target data as a long tensor for categorical classification (training data)
+- X_validation_tensor stores input data as a 32-bit float tensor for precise calculations (validation data)
+- y_validation_tensor stores target data as a long tensor for categorical classification (validation data)
 """
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
 y_train_tensor = torch.tensor(y_train.to_numpy().flatten(), dtype=torch.long)
@@ -74,15 +82,14 @@ y_validation_tensor = torch.tensor(y_validation.to_numpy().flatten(), dtype=torc
 # ---- Normalize input data ---- #
 mean = X_train_tensor.mean(dim=0)
 std = X_train_tensor.std(dim=0)
-
 X_train_tensor = (X_train_tensor - mean) / std
 X_validation_tensor = (X_validation_tensor - mean) / std
 
-# Check for NaNs in input data
+# ---- Check for NaNs in input data ---- #
 assert not torch.isnan(X_train_tensor).any(), "NaN found in training data"
 assert not torch.isnan(X_validation_tensor).any(), "NaN found in validation data"
 
-# Check for NaNs in labels
+# ---- Check for NaNs in target data ---- #
 assert not torch.isnan(y_train_tensor).any(), "NaN found in training labels"
 assert not torch.isnan(y_validation_tensor).any(), "NaN found in validation labels"
 
@@ -100,7 +107,8 @@ print(y_validation_tensor.unique(return_counts=True))
 # ---- Create DataLoader for training and validation sets ---- #
 """
 - data will be loaded in batches of 32 samples
-- shuffle=True shuffles the data after each epoch (improves generalization by preventing overfitting) 
+- shuffle=True shuffles the data after each epoch (improves generalization by preventing overfitting)
+- num_workers=0 uses a single worker to load the data (faster training)
 """
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=0)
 validation_loader = DataLoader(validation_dataset, batch_size=64, shuffle=False, num_workers=0)
@@ -173,16 +181,29 @@ class Genotype:
     """
     - method that calculates the fitness score of the architecture based on its performance
     """
-    def evaluate(self):
+    def evaluate(self, generation, max_generations):
         phenotype = self.to_phenotype()
         early_stop_callback = EarlyStopping(monitor='val_acc', patience=15, mode='max')
-        # callbacks=[early_stop_callback]: stops training when the validation loss has not improved for the last 3 epochs
-        trainer = pl.Trainer(min_epochs=10, max_epochs=30, logger=False, enable_checkpointing=False, enable_progress_bar=False, callbacks=[early_stop_callback], gradient_clip_val=0.5, gradient_clip_algorithm='norm')
+
+        trainer = pl.Trainer(min_epochs=10,                         # trains the model for at least 10 epochs
+                             max_epochs=30,                         # trains the model for 30 epochs
+                             logger=False,
+                             enable_checkpointing=False,            # disables checkpointing to save the model
+                             enable_progress_bar=False,
+                             callbacks=[early_stop_callback],       # stops training when the validation accuracy does not improve for 15 epochs
+                             gradient_clip_val=0.5,                 # clips the gradient to prevent exploding gradients
+                             gradient_clip_algorithm='norm')        # normalizes the gradient to prevent exploding gradients
+        
+        # trainer.fit: trains the model
         trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
+
+        # trainer.validate: evaluates the model on the validation set
         trainer.validate(phenotype, dataloaders=validation_loader)
+
         # trainer.callback_metrics.get('val_acc', torch.tensor(0.0)): gets the validation accuracy from the trainer
         validation_accuracy = trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).item()
-        self.fitness = fitness_function(self.architecture, validation_accuracy)
+
+        self.fitness = fitness_function(self.architecture, validation_accuracy, generation, max_generations)
         return self.fitness
 
     """
@@ -190,10 +211,14 @@ class Genotype:
     """
     def to_phenotype(self):
         return Phenotype(self.architecture)
-    
+
+"""
+- method that initializes the weights of the neural network model
+"""
 def init_weights(m):
     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
         nn.init.xavier_uniform_(m.weight)
+
 
 # ---- Phenotype class ---- #
 """
@@ -207,14 +232,15 @@ class Phenotype(pl.LightningModule):
     """
     - constructor for the Phenotype class
     - initializes the class with the genotype and the loss function
+    - initializes the accuracy metric using torchmetrics.Accuracy
     """
     def __init__(self, genotype=None):
         super(Phenotype, self).__init__()
         if genotype:
             self.genotype = genotype
-            self.model = self.build_model_from_genotype(genotype)
-            self.model.apply(init_weights)
-        self.loss_fn = nn.CrossEntropyLoss()
+            self.model = self.build_model_from_genotype(genotype)   # builds the neural network model based on the genotype
+            self.model.apply(init_weights)                          # initializes the weights of the neural network model
+        self.loss_fn = nn.CrossEntropyLoss()                        # calculates the loss between the predictions and the target data
         self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=2)
 
     """
@@ -313,7 +339,7 @@ class Phenotype(pl.LightningModule):
         logits = self.forward(x)                        # passes the input data through the neural network (predictions) 
         y = y.view(-1)                                  # reshapes the target data to match the predictions
         loss = self.loss_fn(logits, y)                  # calculates the loss between the predictions and the target data
-        preds = logits.argmax(dim=1)
+        preds = logits.argmax(dim=1)                    # returns the index of the maximum value in the predictions
         acc = self.accuracy(preds, y)                   # uses torchmetrics.Accuracy to calculate accuracy
         self.log('train_loss', loss, prog_bar=True)     # logs the training loss
         self.log('train_acc', acc, prog_bar=True)       # logs the training accuracy
@@ -348,9 +374,15 @@ class Phenotype(pl.LightningModule):
         self.log('val_acc', acc, prog_bar=True)                     # logs the validation accuracy
         return {'val_loss': loss, 'val_acc': acc}
     
+    """
+    - method that resets the accuracy metric at the start of each training epoch
+    """
     def on_train_epoch_start(self):
         self.accuracy.reset()
 
+    """
+    - method that resets the accuracy metric at the start of each validation epoch
+    """
     def on_validation_epoch_start(self):
         self.accuracy.reset()
     
@@ -375,22 +407,30 @@ class Phenotype(pl.LightningModule):
 - method that calculates the fitness score of the architecture based on its performance
 - architecture: architecture of the neural network
 - validation_accuracy: accuracy of the model on the validation set
+- generation: current generation of the evolutionary algorithm
+- max_generations: maximum number of generations for the evolutionary algorithm
 - model_size: size of the model (number of parameters)
 - training_time: time taken to train the model
-- accuracy_component: component of the fitness score based on the validation accuracy
 - size_penalty: reduces fitness for larger models (penalty scaled by alpha)
 - time_penalty: reduces fitness for longer training times (penalty scaled by BETA)
 - fitness: overall fitness score of the architecture
 - higher fitness -> better architecture
 """
-def fitness_function(architecture, validation_accuracy):
+def fitness_function(architecture, validation_accuracy, generation, max_generations):
     model_size = sum(layer.get('filters', 0) + layer.get('units', 0) for layer in architecture)
     training_time = 0.1 * model_size
-    accuracy_component = validation_accuracy
-    size_penalty = alpha * model_size
-    time_penalty = BETA * training_time
+
+    # dynamic weights for exploration and exploitation
+    dynamic_alpha = alpha * (1 + (generation / max_generations))
+    dynamic_BETA = BETA * (1 - (generation / max_generations))
+
+    # accuracy_component = validation_accuracy
+
+    size_penalty = dynamic_alpha * model_size
+    time_penalty = dynamic_BETA * training_time
+
     #noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
-    fitness = accuracy_component - size_penalty - time_penalty #+ noise
+    fitness = validation_accuracy - size_penalty - time_penalty #+ noise
     return max(0.0, fitness)
 
 
@@ -412,15 +452,15 @@ class NASDifferentialEvolution:
     def initialize_population(self):
         return [Genotype() for _ in range(self.population_size)]
 
-
     """
     - method that mutates the genotype of an individual in the population to create a new individual (mutant)
     - parent1: first parent genotype
     - parent2: second parent genotype
     - parent3: third parent genotype
+    - F: mutation factor for the evolutionary algorithm
     - returns the mutant genotype
     """
-    def mutate(self, parent1, parent2, parent3):
+    def mutate(self, parent1, parent2, parent3, F):
         mutant = copy.deepcopy(parent1.architecture)    # creates a copy of the parent genotype
         filter_options = [8, 16, 32, 64, 128, 256]
 
@@ -447,7 +487,7 @@ class NASDifferentialEvolution:
     - method that performs crossover between a parent and a mutant to create an offspring
     - with a probability of crossover rate, replaces the parent's layer with the corresponding layer from the mutant
     """
-    def crossover(self, parent, mutant):
+    def crossover(self, parent, mutant, CR):
         offspring_architecture = copy.deepcopy(parent.architecture)
         for i in range(len(offspring_architecture)):
             if random.random() < CR:
@@ -497,6 +537,27 @@ class NASDifferentialEvolution:
         best_generation = -1
         best_architectures = []
 
+        # makes sure that fitness is evaluated for all individuals before sorting
+        for individual in self.population:
+            if individual.fitness is None:
+                individual.evaluate(generation=0, max_generations=self.generations)
+
+        # keeps the best individual unchanged in the next generation
+        elite_count = 1                                               # number of elite individuals to keep
+
+        # selects the elite individuals based on their fitness scores
+        elite_individuals = sorted(self.population,
+                                   key=lambda ind: ind.fitness,
+                                   reverse=True)[:elite_count]
+
+        """
+        - method that calculates the population diversity based on the unique architectures in the population
+        """
+        def population_diversity(population):
+            architectures = [ind.architecture for ind in population]
+            unique_architectures = set(str(arch) for arch in architectures)
+            return len(unique_architectures) / len(population)
+
         """
         - each iteration represents a generation where the population evolves
         - start_time: tracks how long the current generation takes to complete
@@ -506,8 +567,15 @@ class NASDifferentialEvolution:
             if self.verbose:
                 print(f"Generation {generation + 1}")
 
-            new_population = []         # stores the new population of genotypes
-            generation_fitnesses = []   # stores the fitness scores of the genotypes in the current generation
+            initial_F, final_F = 0.9, 0.5       # initial and final mutation factors
+            initial_CR, final_CR = 0.9, 0.7     # initial and final crossover rates
+
+            # dynamically adjusts mutation and crossover rates
+            F = initial_F - (generation / self.generations) * (initial_F - final_F)
+            CR = initial_CR - (generation / self.generations) * (initial_CR - final_CR)
+
+            new_population = []                 # stores the new population of genotypes
+            generation_fitnesses = []           # stores the fitness scores of the genotypes in the current generation
 
             """
             - for each individual in the population, creates a mutant and an offspring
@@ -519,11 +587,11 @@ class NASDifferentialEvolution:
                 candidates = list(range(self.population_size))
                 candidates.remove(i)                                    # removes the current individual from the list of candidates
                 parent1, parent2, parent3 = [self.population[idx] for idx in random.sample(candidates, 3)]
-                mutant = self.mutate(parent1, parent2, parent3)
-                offspring = self.crossover(self.population[i], mutant)  # creates an offspring by performing crossover between the parent and the mutant
+                mutant = self.mutate(parent1, parent2, parent3, F)
+                offspring = self.crossover(self.population[i], mutant, CR)  # creates an offspring by performing crossover between the parent and the mutant
 
-                parent_fitness = self.population[i].evaluate()          # evaluates the fitness of the parent
-                offspring_fitness = offspring.evaluate()                # evaluates the fitness of the offspring
+                parent_fitness = self.population[i].fitness or self.population[i].evaluate(generation, self.generations)          # evaluates the fitness of the parent
+                offspring_fitness = offspring.evaluate(generation, self.generations)               # evaluates the fitness of the offspring
 
                 if offspring_fitness > parent_fitness:
                     new_population.append(offspring)
@@ -532,10 +600,10 @@ class NASDifferentialEvolution:
                     new_population.append(self.population[i])
                     generation_fitnesses.append(parent_fitness)
 
-            self.population = new_population
+            self.population = elite_individuals + new_population[:self.population_size - elite_count]
             best_individual = max(self.population, key=lambda ind: ind.fitness)
             best_fitness = best_individual.fitness
-            best_accuracy = best_individual.evaluate()
+            best_accuracy = best_individual.evaluate(generation, self.generations)
 
             if self.verbose:
                 print(f"Best fitness in generation {generation + 1}: {best_fitness}")
@@ -577,7 +645,8 @@ class NASDifferentialEvolution:
             print(f"Found in generation {best_generation}")
             print(best_overall_individual.architecture)
             print("Fitness:", best_overall_fitness)
-            print("Accuracy:", best_overall_fitness - alpha * sum(layer.get('filters', 0) + layer.get('units', 0) for layer in best_overall_individual.architecture), "\n")
+            print("Accuracy:", best_overall_fitness - alpha * sum(layer.get('filters', 0) + layer.get('units', 0)
+                                                                  for layer in best_overall_individual.architecture), "\n")
 
             print("Best architecture in each generation:")
             for generation in best_architectures:

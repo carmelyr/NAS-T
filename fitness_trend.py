@@ -43,11 +43,11 @@ def plot_avg_fitness_accuracy_trends(json_file):
 
     # Plot combined average fitness and accuracy trends
     plt.figure(figsize=(10, 6))
-    plt.plot(range(1, max_generations + 1), avg_fitness_trend, label='Average Fitness', color='blue')
-    plt.plot(range(1, max_generations + 1), avg_accuracy_trend, label='Average Accuracy', color='orange')
+    plt.plot(range(1, max_generations + 1), avg_fitness_trend, label='Average Fitness', color='purple')
+    plt.plot(range(1, max_generations + 1), avg_accuracy_trend, label='Average Accuracy', color='deeppink')
     plt.xlabel('Generation')
     plt.ylabel('Score')
-    plt.title('Average Fitness and Accuracy Trends Across All Runs')
+    plt.title('Average Fitness and Accuracy Across All Runs')
     plt.legend()
     plt.grid(True)
     plt.xticks(range(1, max_generations + 1))  # Set x-axis ticks to be integers
