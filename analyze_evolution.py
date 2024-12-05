@@ -63,6 +63,10 @@ plt.ylim(0, 1.0)
 # ---- Set the x-axis to use integer ticks ---- #
 plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
 
+# ---- Set x-axis ticks to display all generations explicitly ---- #
+generations = df['generation'].unique()
+plt.xticks(generations)
+
 plt.title(f"Fitness Evolution Over Generations\nTotal Runs: {total_runs}\n Best Fitness Achieved in Run {best_run_id} for Generation {best_generation} (Fitness: {best_fitness_value:.6f})")
 
 # ---- Add markers for the legend ---- #
