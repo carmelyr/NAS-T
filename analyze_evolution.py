@@ -43,14 +43,15 @@ plt.figure(figsize=(13, 7))
 
 # ---- Colors for each run ---- #
 colors = cm.get_cmap('tab10', total_runs)
+color_map = {run_id: colors(i % colors.N) for i, run_id in enumerate(sorted(df['run'].unique()))}
 
 # ---- Scatter plot for each run ---- #
 for run_id, group in df[df['type'] == 'Individual'].groupby("run"):
-    plt.scatter(group['generation'], group['fitness'], s=20, alpha=0.4, color=colors(run_id % colors.N))
+    plt.scatter(group['generation'], group['fitness'], s=20, alpha=0.4, color=color_map[run_id])
 
 # ---- Scatter plot for the best individual of each run ---- #
 for run_id, group in df[df['type'] == 'Best'].groupby("run"):
-    scatter = plt.scatter(group['generation'], group['fitness'], s=40, alpha=0.8, color=colors(run_id % colors.N), label=f'Run {run_id} Best')
+    plt.scatter(group['generation'], group['fitness'], s=40, alpha=0.8, color=color_map[run_id], label=f'Run {run_id} Best')
 
 plt.xlabel("Generation")
 plt.ylabel("Fitness")
@@ -60,13 +61,13 @@ plt.ylim(0, 1.0)
 
 plt.title(f"Fitness Evolution Over Generations\nTotal Runs: {total_runs}\n Best Fitness Achieved in Run {best_run_id} for Generation {best_generation} (Fitness: {best_fitness_value:.6f})")
 
-# ---- Adds a legend to the plot ---- #
-plt.xticks(ticks=sorted(df['generation'].unique()))
+# ---- Add markers for the legend ---- #
 run_markers = []
-for run_id in range(total_runs):
-    run_markers.append(mlines.Line2D([], [], color=colors(run_id % colors.N), marker='o', linestyle='None', markersize=5, alpha=0.4, label=f'Run {run_id + 1} Individual'))
-    run_markers.append(mlines.Line2D([], [], color=colors(run_id % colors.N), marker='o', linestyle='None', markersize=5, alpha=0.8, label=f'Run {run_id + 1} Best'))
+for run_id in range(1, total_runs + 1):
+    run_markers.append(mlines.Line2D([], [], color=color_map[run_id], marker='o', linestyle='None', markersize=5, alpha=0.4, label=f'Run {run_id} Individual'))
+    run_markers.append(mlines.Line2D([], [], color=color_map[run_id], marker='o', linestyle='None', markersize=5, alpha=0.8, label=f'Run {run_id} Best'))
 
+# ---- Add the legend to the plot ---- #
 plt.legend(handles=run_markers, loc='lower left', fontsize=8)
 
 # ---- Adds annotations to the plot ---- #
