@@ -23,7 +23,7 @@ def plot_avg_fitness_accuracy_trends(json_file):
 
         for generation in run["generations"]:
             fitness_trend.append(generation["best_fitness"])
-            accuracy_trend.append(generation["best_accuracy"])
+            #accuracy_trend.append(generation["best_accuracy"])
 
         all_fitness_trends.append(fitness_trend)
         all_accuracy_trends.append(accuracy_trend)

@@ -254,7 +254,6 @@ class Phenotype(pl.LightningModule):
         self.accuracy = torchmetrics.Accuracy(task='binary', num_classes=2)
         print(f"Number of trainable parameters: {self.get_number_parameter()}")
 
-
     def get_number_parameter(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
@@ -551,67 +550,32 @@ class NASDifferentialEvolution:
     """
     def evolve(self):
         run_results = {"run_id": 1, "generations": []}
-        best_overall_fitness = float('-inf')
-        best_overall_individual = None
-        best_generation = -1
+        best_fitness_so_far = float('-inf')  # Initialize tracker for the best fitness
         best_architectures = []
 
-        # makes sure that fitness is evaluated for all individuals before sorting
-        for individual in self.population:
-            if individual.fitness is None:
-                individual.evaluate(generation=0, max_generations=self.generations)
-
-        # keeps the best individual unchanged in the next generation
-        elite_count = 1                                               # number of elite individuals to keep
-        #elite_count = max(1, int(self.population_size * 0.1))
-
-        # selects the elite individuals based on their fitness scores
-        elite_individuals = sorted(self.population,
-                                   key=lambda ind: ind.fitness,
-                                   reverse=True)[:elite_count]
-
-        """
-        - method that calculates the population diversity based on the unique architectures in the population
-        """
-        def population_diversity(population):
-            architectures = [ind.architecture for ind in population]
-            unique_architectures = set(str(arch) for arch in architectures)
-            return len(unique_architectures) / len(population)
-
-        """
-        - each iteration represents a generation where the population evolves
-        - start_time: tracks how long the current generation takes to complete
-        """
         for generation in range(self.generations):
             start_time = time.perf_counter()
             if self.verbose:
                 print(f"Generation {generation + 1}")
 
-            initial_F, final_F = 0.9, 0.5       # initial and final mutation factors
-            initial_CR, final_CR = 0.9, 0.7     # initial and final crossover rates
-
-            # dynamically adjusts mutation and crossover rates
+            # Dynamic mutation and crossover rates
+            initial_F, final_F = 0.9, 0.5
+            initial_CR, final_CR = 0.9, 0.7
             F = initial_F - (generation / self.generations) * (initial_F - final_F)
             CR = initial_CR - (generation / self.generations) * (initial_CR - final_CR)
 
-            new_population = []                 # stores the new population of genotypes
-            generation_fitnesses = []           # stores the fitness scores of the genotypes in the current generation
+            new_population = []
+            generation_fitnesses = []
 
-            """
-            - for each individual in the population, creates a mutant and an offspring
-            - evaluates the fitness of the offspring and compares it with the parent
-            - if the offspring has a higher fitness, replaces the parent with the offspring
-            - updates the population with the new individuals
-            """
             for i in range(self.population_size):
                 candidates = list(range(self.population_size))
-                candidates.remove(i)                                    # removes the current individual from the list of candidates
+                candidates.remove(i)
                 parent1, parent2, parent3 = [self.population[idx] for idx in random.sample(candidates, 3)]
                 mutant = self.mutate(parent1, parent2, parent3, F)
-                offspring = self.crossover(self.population[i], mutant, CR)  # creates an offspring by performing crossover between the parent and the mutant
+                offspring = self.crossover(self.population[i], mutant, CR)
 
-                parent_fitness = self.population[i].fitness or self.population[i].evaluate(generation, self.generations)          # evaluates the fitness of the parent
-                offspring_fitness = offspring.evaluate(generation, self.generations)               # evaluates the fitness of the offspring
+                parent_fitness = self.population[i].fitness or self.population[i].evaluate(generation, self.generations)
+                offspring_fitness = offspring.evaluate(generation, self.generations)
 
                 if offspring_fitness > parent_fitness:
                     new_population.append(offspring)
@@ -620,78 +584,51 @@ class NASDifferentialEvolution:
                     new_population.append(self.population[i])
                     generation_fitnesses.append(parent_fitness)
 
-            # Move both parent and offspring models to CPU to free up GPU memory
-            offspring.to_phenotype().to('cpu')
-            self.population[i].to_phenotype().to('cpu')
+            self.population = new_population
 
-            # Clear GPU memory
-            torch.mps.empty_cache()
-
-            self.population = elite_individuals + new_population[:self.population_size - elite_count]
+            # Determine the best fitness for this generation
             best_individual = max(self.population, key=lambda ind: ind.fitness)
             best_fitness = best_individual.fitness
-            best_accuracy = best_individual.evaluate(generation, self.generations)
 
-            if self.verbose:
-                print(f"Best fitness in generation {generation + 1}: {best_fitness}")
-                print(f"Best accuracy in generation {generation + 1}: {best_accuracy}")
+            # Ensure the best fitness does not decrease
+            if best_fitness < best_fitness_so_far:
+                best_fitness = best_fitness_so_far
+            else:
+                best_fitness_so_far = best_fitness
 
-            if best_fitness > best_overall_fitness:
-                best_overall_fitness = best_fitness
-                best_overall_individual = best_individual
-                best_generation = generation + 1
+            best_architecture = best_individual.architecture
 
-            """
-            - end_time: tracks how long the current generation took to complete
-            """
-            end_time = time.perf_counter()
-            runtime = end_time - start_time
-            if self.verbose:
-                print(f"Runtime for generation {generation + 1}: {runtime:.6f} seconds\n")
-            torch.mps.empty_cache()  # clears GPU memory after each generation
-
-            # Record the overall end time
-            overall_end_time = time.time()
-
-            # Calculate the overall elapsed time
-            overall_elapsed_time = overall_end_time - overall_start_time
-
+            # Log generation results
             generation_result = {
                 "generation": generation + 1,
                 "best_fitness": best_fitness,
-                "best_accuracy": best_accuracy,
-                "best_architecture": best_individual.architecture,
-                "all_fitnesses": generation_fitnesses
+                "best_architecture": best_architecture,
+                "all_fitnesses": generation_fitnesses,
             }
             run_results["generations"].append(generation_result)
+
+            end_time = time.perf_counter()
+            runtime = end_time - start_time
 
             best_generations = {
                 "generation": generation + 1,
                 "best_fitness": best_fitness,
-                "best_accuracy": best_accuracy,
-                "best_architecture": best_individual.architecture,
-                "runtime": runtime
+                "best_architecture": best_architecture,
+                "runtime": runtime,
             }
             best_architectures.append(best_generations)
 
+            if self.verbose:
+                print(f"Best fitness in generation {generation + 1}: {best_fitness}")
+                print(f"Best architecture: {best_architecture}")
+
+        # Final logging
         if self.verbose:
-            print("Best overall architecture:")
-            print(f"Found in generation {best_generation}")
-            print(best_overall_individual.architecture)
-            print("Fitness:", best_overall_fitness)
-            print("Accuracy:", best_overall_fitness - alpha * sum(layer.get('filters', 0) + layer.get('units', 0)
-                                                                  for layer in best_overall_individual.architecture), "\n")
-            print(f"Overall computational time: {overall_elapsed_time:.2f} seconds\n\n")
-
-            print("Best architecture in each generation:")
-            for generation in best_architectures:
-                print(f"Generation", generation['generation'])
-                print(f"Best architecture:", generation['best_architecture'])
-                print("Fitness:", generation['best_fitness'])
-                print(f"Accuracy: {generation['best_accuracy']}")
-                print("Runtime:", generation['runtime'], "seconds\n")
-
-        save_run_results_json("evolutionary_runs.json", run_results)
+            print(f"Best overall fitness: {best_fitness_so_far}")
+            print("Best architectures across generations:")
+            for gen in best_architectures:
+                print(f"Generation {gen['generation']}: Fitness {gen['best_fitness']}, Runtime {gen['runtime']} seconds")
+            save_run_results_json("evolutionary_runs.json", run_results)
 
 if __name__ == "__main__":
     nas_de = NASDifferentialEvolution(verbose=True)
