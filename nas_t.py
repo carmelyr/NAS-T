@@ -16,11 +16,10 @@ import torchmetrics
 #from torchmetrics import Metric
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler    # for scaling the data
 
-
 # ---- Parameters ---- #
-population_size = 30
-generations = 15
-F = 0.85             # mutation factor for the evolutionary algorithm
+population_size = 10
+generations = 5
+F = 0.8             # mutation factor for the evolutionary algorithm
 CR = 0.9             # crossover rate for the evolutionary algorithm
 alpha = 0.0001       # penalty for model size
 BETA = 0.00001       # penalty for training time
@@ -31,6 +30,9 @@ BETA = 0.00001       # penalty for training time
 # n_repeats = 3     # number of repeats
 # rkf = RepeatedKFold(n_folds=n_folds, n_repeats=n_repeats, random_state=42)
 
+
+# Record the overall start time
+overall_start_time = time.time()
 
 # ---- Load data from the classification_ozone dataset ---- #
 """
@@ -110,8 +112,8 @@ print(y_validation_tensor.unique(return_counts=True))
 - shuffle=True shuffles the data after each epoch (improves generalization by preventing overfitting)
 - num_workers=0 uses a single worker to load the data (faster training)
 """
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=0)
-validation_loader = DataLoader(validation_dataset, batch_size=64, shuffle=False, num_workers=0)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0)
+validation_loader = DataLoader(validation_dataset, batch_size=32, shuffle=False, num_workers=0)
 
 # ---- Save run results to a JSON file ---- #
 """
@@ -153,11 +155,11 @@ def save_run_results_json(filename, run_results):
 """
 def random_architecture():
     return [
-        {'layer': 'Conv', 'filters': random.choice([8, 16, 32, 64, 128, 256]), 'kernel_size': random.choice([3, 5, 8]),
+        {'layer': 'Conv', 'filters': random.choice([8, 16, 32, 64, 128]), 'kernel_size': random.choice([3, 5]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
         {'layer': 'ZeroOp'},
         {'layer': 'MaxPooling', 'pool_size': random.choice([2, 3])},
-        {'layer': 'Dense', 'units': random.choice([16, 32, 64, 128, 256]),
+        {'layer': 'Dense', 'units': random.choice([16, 32, 64, 128]),
          'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
         {'layer': 'Dropout', 'rate': random.uniform(0.1, 0.5)},
         {'layer': 'Activation', 'activation': random.choice(['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear'])}
@@ -183,13 +185,15 @@ class Genotype:
     """
     def evaluate(self, generation, max_generations):
         phenotype = self.to_phenotype()
-        early_stop_callback = EarlyStopping(monitor='val_acc', patience=15, mode='max')
+        early_stop_callback = EarlyStopping(monitor='val_acc', patience=9, mode='max')
 
         trainer = pl.Trainer(min_epochs=10,                         # trains the model for at least 10 epochs
-                             max_epochs=30,                         # trains the model for 30 epochs
+                             max_epochs=100,                         # trains the model for 30 epochs; increase
                              logger=False,
+                             accelerator='cpu',
                              enable_checkpointing=False,            # disables checkpointing to save the model
                              enable_progress_bar=False,
+                             precision=16,                          # uses 16-bit precision for faster training
                              callbacks=[early_stop_callback],       # stops training when the validation accuracy does not improve for 15 epochs
                              gradient_clip_val=0.5,                 # clips the gradient to prevent exploding gradients
                              gradient_clip_algorithm='norm')        # normalizes the gradient to prevent exploding gradients
@@ -204,6 +208,12 @@ class Genotype:
         validation_accuracy = trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).item()
 
         self.fitness = fitness_function(self.architecture, validation_accuracy, generation, max_generations)
+
+        # Move the phenotype to CPU to free up GPU memory
+        phenotype.to('cpu')
+
+        # Clear GPU memory
+        torch.mps.empty_cache()
         return self.fitness
 
     """
@@ -215,9 +225,9 @@ class Genotype:
 """
 - method that initializes the weights of the neural network model
 """
-def init_weights(m):
-    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
-        nn.init.xavier_uniform_(m.weight)
+#def init_weights(m):
+#    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
+#        nn.init.xavier_uniform_(m.weight)
 
 
 # ---- Phenotype class ---- #
@@ -236,12 +246,17 @@ class Phenotype(pl.LightningModule):
     """
     def __init__(self, genotype=None):
         super(Phenotype, self).__init__()
-        if genotype:
+        if (genotype):
             self.genotype = genotype
             self.model = self.build_model_from_genotype(genotype)   # builds the neural network model based on the genotype
-            self.model.apply(init_weights)                          # initializes the weights of the neural network model
+            #self.model.apply(init_weights)                          # initializes the weights of the neural network model
         self.loss_fn = nn.CrossEntropyLoss()                        # calculates the loss between the predictions and the target data
-        self.accuracy = torchmetrics.Accuracy(task='multiclass', num_classes=2)
+        self.accuracy = torchmetrics.Accuracy(task='binary', num_classes=2)
+        print(f"Number of trainable parameters: {self.get_number_parameter()}")
+
+
+    def get_number_parameter(self):
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
     """
     - method that builds the neural network model based on the genotype
@@ -254,7 +269,10 @@ class Phenotype(pl.LightningModule):
     def build_model_from_genotype(self, genotype):
         layers = []
         input_channels = 1
-        output_size = 1201
+        #output_size = 1201  # todo should be number time steps
+
+        # Dynamically set the output size from the number of features in the input tensor
+        output_size = X_train_tensor.size(1)  # Get the number of time steps from the training data tensor
 
         for layer in genotype:
             if layer['layer'] == 'Conv':
@@ -296,7 +314,9 @@ class Phenotype(pl.LightningModule):
             elif layer['layer'] == 'Dropout':
                 layers.append(nn.Dropout(layer['rate']))
 
-        layers.append(nn.Linear(input_channels, 2))
+        #layers.append(nn.Softmax(nn.Linear(input_channels, 2), dim=1))
+        layers.append(nn.Linear(input_channels, 2))  # Final linear layer
+        layers.append(nn.Softmax(dim=1))             # Apply softmax along the last dimension
 
         return nn.Sequential(*layers)
     
@@ -341,15 +361,9 @@ class Phenotype(pl.LightningModule):
         loss = self.loss_fn(logits, y)                  # calculates the loss between the predictions and the target data
         preds = logits.argmax(dim=1)                    # returns the index of the maximum value in the predictions
         acc = self.accuracy(preds, y)                   # uses torchmetrics.Accuracy to calculate accuracy
-        self.log('train_loss', loss, prog_bar=True)     # logs the training loss
-        self.log('train_acc', acc, prog_bar=True)       # logs the training accuracy
+        self.log('train_loss', loss, prog_bar=False)     # logs the training loss
+        self.log('train_acc', acc, prog_bar=False)       # logs the training accuracy
         return loss
-    
-    """
-    - method that defines the training epoch end for the neural network
-    def training_epoch_end(self, outputs):
-        avg_loss = torch.stack([x for x in outputs]).mean()
-        self.log('avg_train_loss', avg_loss, prog_bar = False)"""
 
     """
     - method that defines the validation step for the neural network
@@ -370,8 +384,8 @@ class Phenotype(pl.LightningModule):
         #print(f"Labels: {y[:5]}")
 
         acc = self.accuracy(preds, y)                               # uses torchmetrics.Accuracy to calculate accuracy
-        self.log('val_loss', loss, prog_bar=True)                   # logs the validation loss
-        self.log('val_acc', acc, prog_bar=True)                     # logs the validation accuracy
+        self.log('val_loss', loss, prog_bar=False)                   # logs the validation loss
+        self.log('val_acc', acc, prog_bar=False)                     # logs the validation accuracy
         return {'val_loss': loss, 'val_acc': acc}
     
     """
@@ -385,14 +399,19 @@ class Phenotype(pl.LightningModule):
     """
     def on_validation_epoch_start(self):
         self.accuracy.reset()
+
+    def on_train_epoch_end(self, unused_outputs=None):
+        self.accuracy.reset()
+        torch.mps.empty_cache()  # clears GPU memory after the epoch
     
     """
     - method that defines the validation epoch end for the neural network
     - calculates the average validation accuracy of the model
     """
     def on_validation_epoch_end(self):
-        self.log('epoch_val_acc', self.accuracy.compute(), prog_bar=True)
+        self.log('epoch_val_acc', self.accuracy.compute(), prog_bar=False)
         self.accuracy.reset()
+        torch.mps.empty_cache()  # clears GPU memory after the epoch
 
     """
     - method that specifies how the model's parameters should be updated during training
@@ -418,7 +437,7 @@ class Phenotype(pl.LightningModule):
 """
 def fitness_function(architecture, validation_accuracy, generation, max_generations):
     model_size = sum(layer.get('filters', 0) + layer.get('units', 0) for layer in architecture)
-    training_time = 0.1 * model_size
+    #training_time = 0.1 * model_size    # todo 
 
     # dynamic weights for exploration and exploitation
     dynamic_alpha = alpha * (1 + (generation / max_generations))
@@ -427,7 +446,7 @@ def fitness_function(architecture, validation_accuracy, generation, max_generati
     # accuracy_component = validation_accuracy
 
     size_penalty = dynamic_alpha * model_size
-    time_penalty = dynamic_BETA * training_time
+    time_penalty = dynamic_BETA #* training_time
 
     #noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
     fitness = validation_accuracy - size_penalty - time_penalty #+ noise
@@ -544,6 +563,7 @@ class NASDifferentialEvolution:
 
         # keeps the best individual unchanged in the next generation
         elite_count = 1                                               # number of elite individuals to keep
+        #elite_count = max(1, int(self.population_size * 0.1))
 
         # selects the elite individuals based on their fitness scores
         elite_individuals = sorted(self.population,
@@ -600,6 +620,13 @@ class NASDifferentialEvolution:
                     new_population.append(self.population[i])
                     generation_fitnesses.append(parent_fitness)
 
+            # Move both parent and offspring models to CPU to free up GPU memory
+            offspring.to_phenotype().to('cpu')
+            self.population[i].to_phenotype().to('cpu')
+
+            # Clear GPU memory
+            torch.mps.empty_cache()
+
             self.population = elite_individuals + new_population[:self.population_size - elite_count]
             best_individual = max(self.population, key=lambda ind: ind.fitness)
             best_fitness = best_individual.fitness
@@ -621,6 +648,13 @@ class NASDifferentialEvolution:
             runtime = end_time - start_time
             if self.verbose:
                 print(f"Runtime for generation {generation + 1}: {runtime:.6f} seconds\n")
+            torch.mps.empty_cache()  # clears GPU memory after each generation
+
+            # Record the overall end time
+            overall_end_time = time.time()
+
+            # Calculate the overall elapsed time
+            overall_elapsed_time = overall_end_time - overall_start_time
 
             generation_result = {
                 "generation": generation + 1,
@@ -647,6 +681,7 @@ class NASDifferentialEvolution:
             print("Fitness:", best_overall_fitness)
             print("Accuracy:", best_overall_fitness - alpha * sum(layer.get('filters', 0) + layer.get('units', 0)
                                                                   for layer in best_overall_individual.architecture), "\n")
+            print(f"Overall computational time: {overall_elapsed_time:.2f} seconds\n\n")
 
             print("Best architecture in each generation:")
             for generation in best_architectures:
