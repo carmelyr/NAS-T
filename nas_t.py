@@ -627,7 +627,8 @@ class NASDifferentialEvolution:
             print(f"Best overall fitness: {best_fitness_so_far}")
             print("Best architectures across generations:")
             for gen in best_architectures:
-                print(f"Generation {gen['generation']}: Fitness {gen['best_fitness']}, Runtime {gen['runtime']} seconds")
+                print(f"Generation {gen['generation']}:\n Fitness {gen['best_fitness']}\nRuntime {gen['runtime']} seconds\n Architecture: {gen['best_architecture']}\n")
+
             save_run_results_json("evolutionary_runs.json", run_results)
 
 if __name__ == "__main__":
