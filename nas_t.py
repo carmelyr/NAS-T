@@ -620,7 +620,7 @@ class NASDifferentialEvolution:
 
             if self.verbose:
                 print(f"Best fitness in generation {generation + 1}: {best_fitness}")
-                print(f"Best architecture: {best_architecture}")
+                print(f"Best architecture: {best_architecture}\n")
 
         # Final logging
         if self.verbose:
