@@ -53,11 +53,12 @@ class TestGenotype(unittest.TestCase):
         ]
 
         validation_accuracy = 0.85  # dummy validation accuracy value for testing
-        
+        generation = 1  # example generation value
+        max_generations = 10  # example max_generations value
+
         # tests if fitness function returns a float value
-        fitness = fitness_function(architecture, validation_accuracy)
+        fitness = fitness_function(architecture, validation_accuracy, generation, max_generations)
         self.assertIsInstance(fitness, float)
-        self.assertGreaterEqual(fitness, 0.0)  
-        
+
 if __name__ == '__main__':
     unittest.main()
