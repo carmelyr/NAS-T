@@ -43,32 +43,26 @@ class NASDifferentialEvolution:
         pooling_options = [2, 3]
 
         """
-        - mutant[i]: i-th layer of the mutant genotype
-        - F: mutation factor for the evolutionary algorithm that controls how much difference is introduced
-        - parent1.architecture[i]: i-th layer of the first parent genotype (analogous for parent2 and parent3)
+        - iterates through the layers of the genotype
+        - with a probability of F, mutates the filter, units, rate, activation, pool_size, or kernel_size of the layer
+        - the mutated value is calculated based on the parent genotypes
         """
         for i in range(len(mutant)):
             if random.random() < F:
                 if 'filters' in mutant[i]:
-                    # random.uniform(1.0, 2.0): generates a random number between 1.0 and 2.0 in order to increase or decrease the filter size
-                    mutated_filter = int(parent1.architecture[i]['filters'] + F * (parent2.architecture[i]['filters'] - parent3.architecture[i]['filters'])) #* random.uniform(1.0, 2.0))
+                    mutated_filter = int(parent1.architecture[i]['filters'] + F * (parent2.architecture[i]['filters'] - parent3.architecture[i]['filters']))
                     # key=lambda x: abs(x - mutated_filter): finds the closest value to the mutated filter
                     mutant[i]['filters'] = min(filter_options, key=lambda x: abs(x - mutated_filter))
                 if 'units' in mutant[i]:
                     mutant[i]['units'] = max(16, min(64, int(parent1.architecture[i]['units'] + F * (parent2.architecture[i]['units'] - parent3.architecture[i]['units']))))
                 if 'rate' in mutant[i]:
                     mutant[i]['rate'] = max(0.05, min(0.5, parent1.architecture[i]['rate'] + F * (parent2.architecture[i]['rate'] - parent3.architecture[i]['rate'])))
-                # Mutate activation function
                 if 'activation' in mutant[i]:
                     if random.random() < 0.2:  # 20% chance to mutate activation
                         mutant[i]['activation'] = random.choice(activation_options)
-
-                # Mutate pooling size
                 if 'pool_size' in mutant[i]:
                     if random.random() < 0.2:  # 20% chance to mutate pooling size
                         mutant[i]['pool_size'] = random.choice(pooling_options)
-
-                # Mutate kernel size for Conv layers
                 if 'kernel_size' in mutant[i]:
                     if random.random() < 0.2:  # 20% chance to mutate kernel size
                         mutant[i]['kernel_size'] = random.choice([3, 5])
@@ -126,7 +120,7 @@ class NASDifferentialEvolution:
     """
     def evolve(self):
         run_results = {"run_id": 1, "generations": []}
-        best_fitness_so_far = float('-inf')  # Initialize tracker for the best fitness
+        best_fitness_so_far = float('-inf')  # initializes the tracker for the best fitness across generations
         best_architectures = []
 
         for generation in range(self.generations):
@@ -134,7 +128,7 @@ class NASDifferentialEvolution:
             if self.verbose:
                 print(f"Generation {generation + 1}")
 
-            # Dynamic mutation and crossover rates
+            # dynamic weights for exploration and exploitation
             initial_F, final_F = 0.9, 0.5
             initial_CR, final_CR = 0.9, 0.7
             F = initial_F - (generation / self.generations) * (initial_F - final_F)
@@ -143,10 +137,9 @@ class NASDifferentialEvolution:
             new_population = []
             generation_fitnesses = []
 
-            # Elitism: Keep the top 10% individuals
-            elitism_count = max(1, int(0.1 * self.population_size))
-            sorted_population = sorted(self.population, key=lambda ind: ind.fitness or float('-inf'), reverse=True)
-            new_population.extend(sorted_population[:elitism_count])
+            elitism_count = max(1, int(0.1 * self.population_size))     # elitism: selects the top 10% of the population based on fitness
+            sorted_population = sorted(self.population, key=lambda ind: ind.fitness or float('-inf'), reverse=True)   # sorts the population based on fitness
+            new_population.extend(sorted_population[:elitism_count])    # adds the top individuals to the new population
 
             for i in range(elitism_count, self.population_size):
                 candidates = list(range(self.population_size))
@@ -167,23 +160,24 @@ class NASDifferentialEvolution:
 
             self.population = new_population
 
-            # Ensure all individuals have their fitness evaluated
+            # ensures that all individuals in the population have been evaluated
             for individual in self.population:
                 if individual.fitness is None:
                     individual.evaluate(generation, self.generations)
 
-            # Determine the best individual
+            # determines the best individual in the population
             try:
                 best_individual = max(self.population, key=lambda ind: ind.fitness)
             except ValueError as e:
                 print(f"Error finding best individual in generation {generation}: {e}")
                 continue
 
-            # Determine the best fitness for this generation
+            # determines the best fitness of the generation
             best_individual = max(self.population, key=lambda ind: ind.fitness)
             best_fitness = best_individual.fitness
 
-            # Ensure the best fitness does not decrease
+            # ensures that the best fitness is not decreasing across generations
+            # the best fitness can stay the same or grow only
             if best_fitness < best_fitness_so_far:
                 best_fitness = best_fitness_so_far
             else:
@@ -194,7 +188,6 @@ class NASDifferentialEvolution:
             end_time = time.perf_counter()
             runtime = "{:.2f}".format(end_time - start_time)
 
-            # Log generation results
             generation_result = {
                 "generation": generation + 1,
                 "best_fitness": best_fitness,
@@ -216,10 +209,10 @@ class NASDifferentialEvolution:
                 print(f"Best fitness in generation {generation + 1}: {best_fitness}")
                 print(f"Best architecture: {best_architecture}\n")
 
-            total_runtime = sum(float(gen['runtime']) for gen in best_architectures)
-            total_runtime = "{:.2f}".format(total_runtime)
+            total_runtime = sum(float(gen['runtime']) for gen in best_architectures)    # calculates the total runtime of the evolutionary algorithm
+            total_runtime = "{:.2f}".format(total_runtime)                              # formats the total runtime to two decimal places
 
-        # Final logging
+        # final logging
         if self.verbose:
             print(f"Best overall fitness: {best_fitness_so_far}")
             print(f"Overall running time: {total_runtime} seconds")
@@ -228,4 +221,4 @@ class NASDifferentialEvolution:
             for gen in best_architectures:
                 print(f"Generation {gen['generation']}:\n Fitness {gen['best_fitness']}\nRuntime {gen['runtime']} seconds\n Architecture: {gen['best_architecture']}\n")
 
-            save_run_results_json("evolutionary_runs.json", run_results)
+            save_run_results_json("nas_t/evolutionary_runs.json", run_results)

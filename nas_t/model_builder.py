@@ -1,36 +1,12 @@
-import random
 import torch
 import torch.nn as nn                                                           # neural network module
 import pytorch_lightning as pl
-import torch.optim as optim
+import torch.optim as optim                                                     # optimization algorithms
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping            # stops training when a monitored quantity has stopped improving
 import torchmetrics
 from utils import fitness_function
 from data_handler import train_loader, validation_loader, X_train_tensor
-
-# ---- Define the random architecture for the neural network based on the values mentioned in the scientific paper ---- #
-"""
-- Publication of the paper: https://ieeexplore.ieee.org/document/9206721 (Neaural Architecture Search for Time Series Classification)
-
-- Conv layer detects patterns in the input data by applying filters to the input
-- ZeroOp layer skips or ignores the next layer
-- MaxPooling layer reduces the size of the data by taking only the maximum value in a window
-- Dense layer connects all input neurons to all output neurons
-- Dropout layer randomly sets a fraction of input units to zero to prevent overfitting
-- Activation layer applies an activation function to the output of the previous layer
-"""
-def random_architecture():
-    return [
-        {'layer': 'Conv', 'filters': random.choice([8, 16, 32, 64, 128]), 'kernel_size': random.choice([3, 5]),
-         'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
-        {'layer': 'ZeroOp'},
-        {'layer': 'MaxPooling', 'pool_size': random.choice([2, 3])},
-        {'layer': 'Dense', 'units': random.choice([16, 32, 64, 128]),
-         'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
-        {'layer': 'Dropout', 'rate': random.uniform(0.1, 0.5)},
-        {'layer': 'Activation', 'activation': random.choice(['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear'])}
-    ]
-
+from config import random_architecture
 
 # ---- Genotype class ---- #
 # Stores and manipulates the architecture of the neural network
@@ -48,15 +24,17 @@ class Genotype:
 
     """
     - method that calculates the fitness score of the architecture based on its performance
+    - generation: current generation of the evolutionary algorithm
+    - max_generations: maximum number of generations for the evolutionary algorithm
     """
     def evaluate(self, generation, max_generations):
         phenotype = self.to_phenotype()
         early_stop_callback = EarlyStopping(monitor='val_acc', patience=15, mode='max')
 
         trainer = pl.Trainer(min_epochs=10,                         # trains the model for at least 10 epochs
-                             max_epochs=100,                         # trains the model for 30 epochs; increase
+                             max_epochs=100,                        # trains the model for maximum 100 epochs
                              logger=False,
-                             accelerator='cpu',
+                             accelerator='cpu',                     # uses the CPU for training
                              enable_checkpointing=False,            # disables checkpointing to save the model
                              enable_progress_bar=False,
                              precision=16,                          # uses 16-bit precision for faster training
@@ -75,10 +53,10 @@ class Genotype:
 
         self.fitness = fitness_function(self.architecture, validation_accuracy, generation, max_generations)
 
-        # Move the phenotype to CPU to free up GPU memory
+        # move the phenotype to CPU to free up GPU memory
         phenotype.to('cpu')
 
-        # Clear GPU memory
+        # clears GPU memory
         torch.mps.empty_cache()
         return self.fitness
 
@@ -104,7 +82,6 @@ class Genotype:
 - Phenotype: subclass of pl.LightningModule that inherits its properties and methods
 """
 class Phenotype(pl.LightningModule):
-
     """
     - constructor for the Phenotype class
     - initializes the class with the genotype and the loss function
@@ -114,12 +91,15 @@ class Phenotype(pl.LightningModule):
         super(Phenotype, self).__init__()
         if (genotype):
             self.genotype = genotype
-            self.model = self.build_model_from_genotype(genotype)   # builds the neural network model based on the genotype
-            #self.model.apply(init_weights)                          # initializes the weights of the neural network model
-        self.loss_fn = nn.CrossEntropyLoss()                        # calculates the loss between the predictions and the target data
-        self.accuracy = torchmetrics.Accuracy(task='binary', num_classes=2)
+            self.model = self.build_model_from_genotype(genotype)               # builds the neural network model based on the genotype
+            #self.model.apply(init_weights)                                     # initializes the weights of the neural network model
+        self.loss_fn = nn.CrossEntropyLoss()                                    # calculates the loss between the predictions and the target data
+        self.accuracy = torchmetrics.Accuracy(task='binary', num_classes=2)     # calculates the accuracy of the model
         print(f"Number of trainable parameters: {self.get_number_parameter()}")
 
+    """
+    - method that returns the number of trainable parameters in the neural network model
+    """
     def get_number_parameter(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
@@ -134,10 +114,10 @@ class Phenotype(pl.LightningModule):
     def build_model_from_genotype(self, genotype):
         layers = []
         input_channels = 1
-        #output_size = 1201  # todo should be number time steps
 
-        # Dynamically set the output size from the number of features in the input tensor
-        output_size = X_train_tensor.size(1)  # Get the number of time steps from the training data tensor
+        # dynamically sets the output size from the number of features in the input tensor
+        # gets the number of time steps from the training data tensor
+        output_size = X_train_tensor.size(1)
 
         for layer in genotype:
             if layer['layer'] == 'Conv':
@@ -179,9 +159,8 @@ class Phenotype(pl.LightningModule):
             elif layer['layer'] == 'Dropout':
                 layers.append(nn.Dropout(layer['rate']))
 
-        #layers.append(nn.Softmax(nn.Linear(input_channels, 2), dim=1))
-        layers.append(nn.Linear(input_channels, 2))  # Final linear layer
-        layers.append(nn.Softmax(dim=1))             # Apply softmax along the last dimension
+        layers.append(nn.Linear(input_channels, 2))  # connects the last layer to the output layer
+        layers.append(nn.Softmax(dim=1))             # applies the softmax function to the output
 
         return nn.Sequential(*layers)
     
@@ -226,8 +205,8 @@ class Phenotype(pl.LightningModule):
         loss = self.loss_fn(logits, y)                  # calculates the loss between the predictions and the target data
         preds = logits.argmax(dim=1)                    # returns the index of the maximum value in the predictions
         acc = self.accuracy(preds, y)                   # uses torchmetrics.Accuracy to calculate accuracy
-        self.log('train_loss', loss, prog_bar=False)     # logs the training loss
-        self.log('train_acc', acc, prog_bar=False)       # logs the training accuracy
+        self.log('train_loss', loss, prog_bar=False)    # logs the training loss
+        self.log('train_acc', acc, prog_bar=False)      # logs the training accuracy
         return loss
 
     """
@@ -248,9 +227,9 @@ class Phenotype(pl.LightningModule):
         #print(f"Predictions: {preds[:5]}")
         #print(f"Labels: {y[:5]}")
 
-        acc = self.accuracy(preds, y)                               # uses torchmetrics.Accuracy to calculate accuracy
-        self.log('val_loss', loss, prog_bar=False)                   # logs the validation loss
-        self.log('val_acc', acc, prog_bar=False)                     # logs the validation accuracy
+        acc = self.accuracy(preds, y)                       # uses torchmetrics.Accuracy to calculate accuracy
+        self.log('val_loss', loss, prog_bar=False)          # logs the validation loss
+        self.log('val_acc', acc, prog_bar=False)            # logs the validation accuracy
         return {'val_loss': loss, 'val_acc': acc}
     
     """
@@ -265,6 +244,9 @@ class Phenotype(pl.LightningModule):
     def on_validation_epoch_start(self):
         self.accuracy.reset()
 
+    """
+    - method that defines the training epoch end for the neural network
+    """
     def on_train_epoch_end(self, unused_outputs=None):
         self.accuracy.reset()
         torch.mps.empty_cache()  # clears GPU memory after the epoch

@@ -44,16 +44,13 @@ def save_run_results_json(filename, run_results):
 """
 def fitness_function(architecture, validation_accuracy, generation, max_generations):
     model_size = sum(layer.get('filters', 0) + layer.get('units', 0) for layer in architecture)
-    #training_time = 0.1 * model_size    # todo 
 
     # dynamic weights for exploration and exploitation
     dynamic_alpha = alpha * (1 + (generation / max_generations * 0.5))
     dynamic_BETA = BETA * (1 - (generation / max_generations * 0.5))
-
-    # accuracy_component = validation_accuracy
-
+    
     size_penalty = dynamic_alpha * model_size
-    time_penalty = dynamic_BETA #* training_time
+    time_penalty = dynamic_BETA
 
     #noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
     fitness = validation_accuracy - size_penalty - time_penalty #+ noise
