@@ -51,7 +51,7 @@ class Genotype:
         # trainer.callback_metrics.get('val_acc', torch.tensor(0.0)): gets the validation accuracy from the trainer
         validation_accuracy = trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).item()
 
-        self.fitness = fitness_function(self.architecture, validation_accuracy, generation, max_generations)
+        self.fitness = fitness_function(self.architecture, validation_accuracy)
 
         # move the phenotype to CPU to free up GPU memory
         phenotype.to('cpu')
