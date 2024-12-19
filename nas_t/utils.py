@@ -42,16 +42,17 @@ def save_run_results_json(filename, run_results):
 - fitness: overall fitness score of the architecture
 - higher fitness -> better architecture
 """
-def fitness_function(architecture, validation_accuracy, generation, max_generations):
-    model_size = sum(layer.get('filters', 0) + layer.get('units', 0) for layer in architecture)
+def fitness_function(architecture, validation_accuracy):
+    #model_size = sum(layer.get('filters', 0) + layer.get('units', 0) for layer in architecture)
 
     # dynamic weights for exploration and exploitation
-    dynamic_alpha = alpha * (1 + (generation / max_generations * 0.5))
-    dynamic_BETA = BETA * (1 - (generation / max_generations * 0.5))
+    # todo: fixed rates
+    #dynamic_alpha = alpha * (1 + (generation / max_generations * 0.5))
+    #dynamic_BETA = BETA * (1 - (generation / max_generations * 0.5))
     
-    size_penalty = dynamic_alpha * model_size
-    time_penalty = dynamic_BETA
+    #size_penalty = dynamic_alpha * model_size
+    #time_penalty = dynamic_BETA
 
     #noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
-    fitness = validation_accuracy - size_penalty - time_penalty #+ noise
+    fitness = validation_accuracy - alpha - BETA #size_penalty - time_penalty #+ noise
     return max(0.0, fitness)
