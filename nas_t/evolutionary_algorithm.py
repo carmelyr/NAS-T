@@ -37,37 +37,63 @@ class NASDifferentialEvolution:
     - returns the mutant genotype
     """
     def mutate(self, parent1, parent2, parent3, F):
-        mutant = copy.deepcopy(parent1.architecture)    # creates a copy of the parent genotype
+        """
+        Mutates a parent's architecture using Differential Evolution.
+        Ensures keys are checked before mutation to avoid KeyErrors.
+        """
+        mutant = copy.deepcopy(parent1.architecture)  # Creates a copy of the parent genotype
         filter_options = [8, 16, 32, 64, 128, 256]
         activation_options = ['relu', 'elu', 'selu', 'sigmoid', 'linear']
         pooling_options = [2, 3]
+        kernel_size_options = [3, 5]
 
-        """
-        - iterates through the layers of the genotype
-        - with a probability of F, mutates the filter, units, rate, activation, pool_size, or kernel_size of the layer
-        - the mutated value is calculated based on the parent genotypes
-        """
         for i in range(len(mutant)):
-            if random.random() < F:
-                if 'filters' in mutant[i]:
-                    mutated_filter = int(parent1.architecture[i]['filters'] + F * (parent2.architecture[i]['filters'] - parent3.architecture[i]['filters']))
-                    # key=lambda x: abs(x - mutated_filter): finds the closest value to the mutated filter
-                    mutant[i]['filters'] = min(filter_options, key=lambda x: abs(x - mutated_filter))
-                if 'units' in mutant[i]:
-                    mutant[i]['units'] = max(16, min(64, int(parent1.architecture[i]['units'] + F * (parent2.architecture[i]['units'] - parent3.architecture[i]['units']))))
-                if 'rate' in mutant[i]:
-                    mutant[i]['rate'] = max(0.05, min(0.5, parent1.architecture[i]['rate'] + F * (parent2.architecture[i]['rate'] - parent3.architecture[i]['rate'])))
-                if 'activation' in mutant[i]:
-                    if random.random() < 0.2:  # 20% chance to mutate activation
-                        mutant[i]['activation'] = random.choice(activation_options)
-                if 'pool_size' in mutant[i]:
-                    if random.random() < 0.2:  # 20% chance to mutate pooling size
-                        mutant[i]['pool_size'] = random.choice(pooling_options)
-                if 'kernel_size' in mutant[i]:
-                    if random.random() < 0.2:  # 20% chance to mutate kernel size
-                        mutant[i]['kernel_size'] = random.choice([3, 5])
-        return Genotype(mutant)
+            layer_type = parent1.architecture[i]['layer']
 
+            # Debugging messages
+            print(f"parent1.architecture[{i}]: {parent1.architecture[i]}")
+            print(f"parent2.architecture[{i}]: {parent2.architecture[i]}")
+            print(f"parent3.architecture[{i}]: {parent3.architecture[i]}")
+
+            if random.random() < F:
+                if layer_type == 'Conv':  # Mutate 'filters' and 'kernel_size'
+                    if 'filters' in parent1.architecture[i]:
+                        mutated_filter = int(
+                            parent1.architecture[i].get('filters', 0) +
+                            F * (parent2.architecture[i].get('filters', 0) - parent3.architecture[i].get('filters', 0))
+                        )
+                        mutant[i]['filters'] = min(filter_options, key=lambda x: abs(x - mutated_filter))
+                    if 'kernel_size' in parent1.architecture[i]:
+                        mutant[i]['kernel_size'] = random.choice(kernel_size_options)
+
+                if layer_type == 'Dense':  # Mutate 'units'
+                    if 'units' in parent1.architecture[i]:
+                        mutated_units = int(
+                            parent1.architecture[i].get('units', 0) +
+                            F * (parent2.architecture[i].get('units', 0) - parent3.architecture[i].get('units', 0))
+                        )
+                        mutant[i]['units'] = max(16, min(128, mutated_units))  # Ensure it's within a valid range
+
+                if layer_type == 'Dropout':  # Mutate 'rate'
+                    if 'rate' in parent1.architecture[i]:
+                        mutant[i]['rate'] = max(
+                            0.05,
+                            min(
+                                0.5,
+                                parent1.architecture[i].get('rate', 0) +
+                                F * (parent2.architecture[i].get('rate', 0) - parent3.architecture[i].get('rate', 0))
+                            )
+                        )
+
+                if layer_type == 'MaxPooling':  # Mutate 'pool_size'
+                    if 'pool_size' in parent1.architecture[i]:
+                        mutant[i]['pool_size'] = random.choice(pooling_options)
+
+                if layer_type == 'Activation':  # Mutate 'activation'
+                    if 'activation' in parent1.architecture[i]:
+                        mutant[i]['activation'] = random.choice(activation_options)
+
+        return Genotype(mutant)
 
     """
     - method that performs crossover between a parent and a mutant to create an offspring

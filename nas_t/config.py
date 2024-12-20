@@ -19,14 +19,35 @@ device = 'mps'          # device to run the model on (mps: multi-processing serv
 - Dropout layer randomly sets a fraction of input units to zero to prevent overfitting
 - Activation layer applies an activation function to the output of the previous layer
 """
-def random_architecture():
-    return [
-        {'layer': 'Conv', 'filters': random.choice([8, 16, 32, 64, 128]), 'kernel_size': random.choice([3, 5]),
-         'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
+# ---- Fixed layer amount and no repeated layers ---- #
+def random_architecture(n=5):
+    """
+    Generate a random architecture with n unique layers, ensuring no layer type repeats.
+    """
+    layer_options = [
+        {'layer': 'Conv', 'filters': [8, 16, 32, 64, 128], 'kernel_size': [3, 5],
+         'activation': ['relu', 'elu', 'selu', 'sigmoid', 'linear']},
         {'layer': 'ZeroOp'},
-        {'layer': 'MaxPooling', 'pool_size': random.choice([2, 3])},
-        {'layer': 'Dense', 'units': random.choice([16, 32, 64, 128]),
-         'activation': random.choice(['relu', 'elu', 'selu', 'sigmoid', 'linear'])},
-        {'layer': 'Dropout', 'rate': random.uniform(0.1, 0.5)},
-        {'layer': 'Activation', 'activation': random.choice(['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear'])}
+        {'layer': 'MaxPooling', 'pool_size': [2, 3]},
+        {'layer': 'Dense', 'units': [16, 32, 64, 128],
+         'activation': ['relu', 'elu', 'selu', 'sigmoid', 'linear']},
+        {'layer': 'Dropout', 'rate': (0.1, 0.5)},
+        {'layer': 'Activation', 'activation': ['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear']}
     ]
+
+    # Randomly shuffle and select n unique layers
+    selected_layers = random.sample(layer_options, min(n, len(layer_options)))
+
+    architecture = []
+    for layer in selected_layers:
+        layer_config = {'layer': layer['layer']}
+        for key, value in layer.items():
+            if key == 'layer':
+                continue
+            if isinstance(value, list):
+                layer_config[key] = random.choice(value)
+            elif isinstance(value, tuple):
+                layer_config[key] = random.uniform(*value)
+        architecture.append(layer_config)
+
+    return architecture
