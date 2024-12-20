@@ -26,7 +26,7 @@ class NASDifferentialEvolution:
     - returns a list of genotypes
     """
     def initialize_population(self):
-        return [Genotype() for _ in range(self.population_size)]
+        return [Genotype(device=device) for _ in range(self.population_size)]
 
     """
     - method that mutates the genotype of an individual in the population to create a new individual (mutant)

@@ -31,23 +31,32 @@ def random_architecture(n=5):
         {'layer': 'MaxPooling', 'pool_size': [2, 3]},
         {'layer': 'Dense', 'units': [16, 32, 64, 128],
          'activation': ['relu', 'elu', 'selu', 'sigmoid', 'linear']},
-        {'layer': 'Dropout', 'rate': (0.1, 0.5)},
-        {'layer': 'Activation', 'activation': ['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear']}
+        {'layer': 'Dropout', 'rate': (0.1, 0.5)}
+        # {'layer': 'Activation', 'activation': ['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear']}
     ]
 
     # Randomly shuffle and select n unique layers
     selected_layers = random.sample(layer_options, min(n, len(layer_options)))
 
     architecture = []
+    layer_config = {}
     for layer in selected_layers:
-        layer_config = {'layer': layer['layer']}
-        for key, value in layer.items():
-            if key == 'layer':
-                continue
-            if isinstance(value, list):
-                layer_config[key] = random.choice(value)
-            elif isinstance(value, tuple):
-                layer_config[key] = random.uniform(*value)
+        if layer['layer'] == 'ZeroOp':  # Skip ZeroOp layers -> no operation
+            continue
+        elif layer['layer'] == 'Conv':
+            layer_config['filters'] = random.choice(layer['filters'])
+            layer_config['kernel_size'] = random.choice(layer['kernel_size'])
+            layer_config['activation'] = random.choice(layer['activation'])
+        elif layer['layer'] == 'MaxPooling':
+            layer_config['pool_size'] = random.choice(layer['pool_size'])
+        elif layer['layer'] == 'Dense':
+            layer_config['units'] = random.choice(layer['units'])
+            layer_config['activation'] = random.choice(layer['activation'])
+        elif layer['layer'] == 'Dropout':
+            layer_config['rate'] = random.uniform(layer['rate'][0], layer['rate'][1])
+        else:
+            print(f"Invalid layer configuration: {layer}")
+        layer_config['layer'] = layer['layer']
         architecture.append(layer_config)
 
     return architecture

@@ -1,4 +1,8 @@
-# .vscode
+.vscode
 .DS_Store
 .idea
 __pycache__
+nas_t/__pycache__
+venv
+
+sandbox.py

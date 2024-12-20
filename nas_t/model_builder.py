@@ -17,9 +17,10 @@ class Genotype:
     - self.config: stores the same architecture of the genotype as defined in self.architecture
     - self.fitness: stores the fitness value of the genotype
     """
-    def __init__(self, architecture=None):
-        self.architecture = architecture if architecture else random_architecture()
+    def __init__(self, architecture=None, device='cpu'):
+        self.architecture = random_architecture() if architecture is None else architecture
         self.config = self.architecture
+        self.device = device
         self.fitness = None
 
     """
@@ -29,6 +30,8 @@ class Genotype:
     """
     def evaluate(self, generation, max_generations):
         phenotype = self.to_phenotype()
+        print(phenotype)
+
         early_stop_callback = EarlyStopping(monitor='val_acc', patience=15, mode='max')
 
         trainer = pl.Trainer(min_epochs=10,                         # trains the model for at least 10 epochs
@@ -54,7 +57,7 @@ class Genotype:
         self.fitness = fitness_function(self.architecture, validation_accuracy)
 
         # move the phenotype to CPU to free up GPU memory
-        phenotype.to('cpu')
+        phenotype.to(self.device)
 
         # clears GPU memory
         torch.mps.empty_cache()
@@ -122,33 +125,39 @@ class Phenotype(pl.LightningModule):
         """
         layers = []
         input_channels = 1
+        out_dim_1 = 1
+        out_dim_2 = X_train_tensor.size(1)  # number of time steps in the input data
         output_size = X_train_tensor.size(1)  # number of time steps in the input data
 
         for i, layer in enumerate(genotype):
             if layer['layer'] == 'Conv':
-                layers.append(nn.Conv1d(input_channels, layer['filters'], kernel_size=layer['kernel_size']))
-                input_channels = layer['filters']
-                output_size = output_size - layer['kernel_size'] + 1
+                layers.append(nn.Conv1d(out_dim_1, layer['filters'], kernel_size=layer['kernel_size']))
+                out_dim_1 = layer['filters']
+                out_dim_2 = out_dim_2 - layer['kernel_size'] + 1  # output_size - layer['kernel_size'] + 1
                 layers.append(self.get_activation(layer['activation']))
 
             elif layer['layer'] == 'MaxPooling':
                 layers.append(nn.MaxPool1d(kernel_size=layer['pool_size']))
                 output_size = output_size // layer['pool_size']
+                out_dim_2 = out_dim_2 // layer['pool_size']
 
             elif layer['layer'] == 'Dense':
                 if i > 0 and genotype[i - 1]['layer'] != 'Dense':
                     layers.append(nn.Flatten())
-                layers.append(nn.Linear(input_channels * output_size, layer['units']))
+                layers.append(nn.Linear(out_dim_1 * out_dim_2, layer['units']))
                 input_channels = layer['units']
+                out_dim_1 = layer['units']
+                out_dim_2 = 1
+                output_size = 1
                 layers.append(self.get_activation(layer['activation']))
 
             elif layer['layer'] == 'Dropout':
                 layers.append(nn.Dropout(layer['rate']))
-
-            elif layer['layer'] == 'Activation':
-                layers.append(self.get_activation(layer['activation']))
-
-        layers.append(nn.Linear(input_channels, 2))
+            else:
+                raise("Layer not implemented")
+        if not isinstance(layers[-1], nn.Linear):  # NOTE: add flatten layer if not linear layer before
+            layers.append(nn.Flatten())
+        layers.append(nn.Linear(out_dim_1*out_dim_2, 2))
         layers.append(nn.Softmax(dim=1))
 
         return nn.Sequential(*layers)
@@ -195,7 +204,7 @@ class Phenotype(pl.LightningModule):
     - returns the output of the neural network (transformed data)
     """
     def forward(self, x):
-        x = x.view(x.size(0), 1, -1)
+        # x = x.view(x.size(0), 1, -1)  # TODO this is an error
         return self.model(x)
 
     """
@@ -204,13 +213,8 @@ class Phenotype(pl.LightningModule):
     - batch: tuple containing input data (x) and target data (y) for training
     """
     def training_step(self, batch, batch_idx):
-        x, y = batch
-        x = x.reshape(x.size(0), -1)
-        logits = self.forward(x)                        # passes the input data through the neural network (predictions) 
-        y = y.view(-1)                                  # reshapes the target data to match the predictions
-        loss = self.loss_fn(logits, y)                  # calculates the loss between the predictions and the target data
-        preds = logits.argmax(dim=1)                    # returns the index of the maximum value in the predictions
-        acc = self.accuracy(preds, y)                   # uses torchmetrics.Accuracy to calculate accuracy
+        loss, preds, acc = self._common_step(batch, batch_idx)
+
         self.log('train_loss', loss, prog_bar=False)    # logs the training loss
         self.log('train_acc', acc, prog_bar=False)      # logs the training accuracy
         return loss
@@ -221,23 +225,27 @@ class Phenotype(pl.LightningModule):
     - calculates the loss and accuracy of the model on the validation set
     """
     def validation_step(self, batch, batch_idx):
-        x, y = batch
-        x = x.reshape(x.size(0), -1)
-        logits = self.forward(x)
-        y = y.view(-1)
-        loss = self.loss_fn(logits, y)                      # calculates the loss between the predictions and the target data
-        preds = logits.argmax(dim=1)    
+        loss, preds, acc = self._common_step(batch, batch_idx)
 
-        # debugging logits and predictions
-        #print(f"Logits: {logits[:5]}")
-        #print(f"Predictions: {preds[:5]}")
-        #print(f"Labels: {y[:5]}")
-
-        acc = self.accuracy(preds, y)                       # uses torchmetrics.Accuracy to calculate accuracy
         self.log('val_loss', loss, prog_bar=False)          # logs the validation loss
         self.log('val_acc', acc, prog_bar=False)            # logs the validation accuracy
         return {'val_loss': loss, 'val_acc': acc}
-    
+
+
+    """
+    Utility method that implements the common processing step for making a prediction of the model
+    """
+    def _common_step(self, batch, batch_idx):
+        x, y = batch
+        x = x.reshape(x.size(0), 1, x.size(1))  # TODO make sure the dim is batch size x channels x sequence length
+        logits = self.forward(x)  # passes the input data through the neural network (predictions)
+
+        loss = self.loss_fn(logits, y)  # calculates the loss between the predictions and the target data
+        preds = logits.argmax(dim=1)  # returns the index of the maximum value in the predictions
+        acc = self.accuracy(preds, y)  # uses torchmetrics.Accuracy to calculate accuracy
+
+        return loss, preds, acc
+
     """
     - method that resets the accuracy metric at the start of each training epoch
     """
