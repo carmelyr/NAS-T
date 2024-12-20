@@ -1,8 +1,8 @@
 import random
 
 # Hyperparameters
-population_size = 80
-generations = 30
+population_size = 15
+generations = 6
 F = 0.8                 # mutation factor
 CR = 0.9                # crossover rate
 alpha = 0.0001          # size penalty
