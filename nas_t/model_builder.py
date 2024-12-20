@@ -112,57 +112,63 @@ class Phenotype(pl.LightningModule):
     - returns the neural network model
     """
     def build_model_from_genotype(self, genotype):
+        """
+        Builds the neural network model based on the genotype.
+        - Variable layers: stores the layers of the neural network
+        - Variable input_channels: stores the number of input channels
+        - Variable output_size: stores the size of the output
+        - For each layer in the genotype, the corresponding layer is added to the neural network
+        - Returns the neural network model
+        """
         layers = []
         input_channels = 1
+        output_size = X_train_tensor.size(1)  # number of time steps in the input data
 
-        # dynamically sets the output size from the number of features in the input tensor
-        # gets the number of time steps from the training data tensor
-        output_size = X_train_tensor.size(1)
-
-        for layer in genotype:
+        for i, layer in enumerate(genotype):
             if layer['layer'] == 'Conv':
-                layers.append(nn.Conv1d(input_channels, layer['filters'], layer['kernel_size']))
+                layers.append(nn.Conv1d(input_channels, layer['filters'], kernel_size=layer['kernel_size']))
                 input_channels = layer['filters']
                 output_size = output_size - layer['kernel_size'] + 1
-                
-                if layer['activation'] == 'relu':
-                    layers.append(nn.ReLU())
-                elif layer['activation'] == 'elu':
-                    layers.append(nn.ELU())
-                elif layer['activation'] == 'selu':
-                    layers.append(nn.SELU())
-                elif layer['activation'] == 'sigmoid':
-                    layers.append(nn.Sigmoid())
-                elif layer['activation'] == 'linear':
-                    layers.append(nn.Identity())
+                layers.append(self.get_activation(layer['activation']))
 
             elif layer['layer'] == 'MaxPooling':
-                layers.append(nn.MaxPool1d(layer['pool_size']))
+                layers.append(nn.MaxPool1d(kernel_size=layer['pool_size']))
                 output_size = output_size // layer['pool_size']
 
             elif layer['layer'] == 'Dense':
-                layers.append(nn.Flatten())
+                if i > 0 and genotype[i - 1]['layer'] != 'Dense':
+                    layers.append(nn.Flatten())
                 layers.append(nn.Linear(input_channels * output_size, layer['units']))
                 input_channels = layer['units']
-                
-                if layer['activation'] == 'relu':
-                    layers.append(nn.ReLU())
-                elif layer['activation'] == 'elu':
-                    layers.append(nn.ELU())
-                elif layer['activation'] == 'selu':
-                    layers.append(nn.SELU())
-                elif layer['activation'] == 'sigmoid':
-                    layers.append(nn.Sigmoid())
-                elif layer['activation'] == 'linear':
-                    layers.append(nn.Identity())
+                layers.append(self.get_activation(layer['activation']))
 
             elif layer['layer'] == 'Dropout':
                 layers.append(nn.Dropout(layer['rate']))
 
-        layers.append(nn.Linear(input_channels, 2))  # connects the last layer to the output layer
-        layers.append(nn.Softmax(dim=1))             # applies the softmax function to the output
+            elif layer['layer'] == 'Activation':
+                layers.append(self.get_activation(layer['activation']))
+
+        layers.append(nn.Linear(input_channels, 2))
+        layers.append(nn.Softmax(dim=1))
 
         return nn.Sequential(*layers)
+
+    def get_activation(self, activation):
+        """
+        Returns the activation function corresponding to the given name.
+        """
+        if activation == 'relu':
+            return nn.ReLU()
+        elif activation == 'elu':
+            return nn.ELU()
+        elif activation == 'selu':
+            return nn.SELU()
+        elif activation == 'sigmoid':
+            return nn.Sigmoid()
+        elif activation == 'linear':
+            return nn.Identity()
+        else:
+            raise ValueError(f"Unsupported activation: {activation}")
     
     """
     - method that loads the model from a checkpoint to resume training or evaluation with a previously trained model
