@@ -3,7 +3,7 @@ import copy
 import torch
 import time
 import pytorch_lightning as pl
-from config import population_size, generations
+from config import population_size, generations, device
 from utils import save_run_results_json
 import random
 import copy
@@ -89,7 +89,7 @@ class NASDifferentialEvolution:
     - save_path: path to save the phenotype
     """
     def train_and_save_phenotype(self, phenotype, train_loader, validation_loader, save_path):
-        trainer = pl.Trainer(max_epochs=20)                                                         # trains the model for 10 epochs
+        trainer = pl.Trainer(max_epochs=20, devices=device)                                         # trains the model for 10 epochs
         trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)   # fits the model to the training data
         trainer.save_checkpoint(save_path)                                                          # saves the model to a checkpoint file
 
