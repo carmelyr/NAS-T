@@ -152,7 +152,7 @@ class NASDifferentialEvolution:
         for generation in range(self.generations):
             start_time = time.perf_counter()
             if self.verbose:
-                print(f"Generation {generation + 1}")
+                print(f"Generation {generation + 1}--------------------------------------------")
 
             # dynamic weights for exploration and exploitation
             initial_F, final_F = 0.9, 0.5

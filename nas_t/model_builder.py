@@ -30,7 +30,6 @@ class Genotype:
     """
     def evaluate(self, generation, max_generations):
         phenotype = self.to_phenotype()
-        print(phenotype)
 
         early_stop_callback = EarlyStopping(monitor='val_acc', patience=15, mode='max')
 
@@ -124,31 +123,26 @@ class Phenotype(pl.LightningModule):
         - Returns the neural network model
         """
         layers = []
-        input_channels = 1
         out_dim_1 = 1
         out_dim_2 = X_train_tensor.size(1)  # number of time steps in the input data
-        output_size = X_train_tensor.size(1)  # number of time steps in the input data
 
         for i, layer in enumerate(genotype):
             if layer['layer'] == 'Conv':
                 layers.append(nn.Conv1d(out_dim_1, layer['filters'], kernel_size=layer['kernel_size']))
                 out_dim_1 = layer['filters']
-                out_dim_2 = out_dim_2 - layer['kernel_size'] + 1  # output_size - layer['kernel_size'] + 1
+                out_dim_2 = out_dim_2 - layer['kernel_size'] + 1
                 layers.append(self.get_activation(layer['activation']))
 
             elif layer['layer'] == 'MaxPooling':
                 layers.append(nn.MaxPool1d(kernel_size=layer['pool_size']))
-                output_size = output_size // layer['pool_size']
                 out_dim_2 = out_dim_2 // layer['pool_size']
 
             elif layer['layer'] == 'Dense':
                 if i > 0 and genotype[i - 1]['layer'] != 'Dense':
                     layers.append(nn.Flatten())
                 layers.append(nn.Linear(out_dim_1 * out_dim_2, layer['units']))
-                input_channels = layer['units']
                 out_dim_1 = layer['units']
                 out_dim_2 = 1
-                output_size = 1
                 layers.append(self.get_activation(layer['activation']))
 
             elif layer['layer'] == 'Dropout':
