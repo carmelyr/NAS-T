@@ -297,5 +297,376 @@
                 "runtime": "37.38"
             }
         ]
+    },
+    {
+        "run_id": 2,
+        "generations": [
+            {
+                "generation": 1,
+                "best_fitness": 0.5453445617103577,
+                "best_architecture": [
+                    {
+                        "filters": 32,
+                        "kernel_size": 5,
+                        "activation": "relu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 64,
+                        "kernel_size": 5,
+                        "activation": "elu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 16,
+                        "kernel_size": 5,
+                        "activation": "sigmoid",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "rate": 0.13847127089118214,
+                        "layer": "Dropout"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    }
+                ],
+                "all_fitnesses": [
+                    0.3180718127632141,
+                    0.3180718127632141,
+                    0.40898090638160706,
+                    0.40898090638160706,
+                    0.49989,
+                    0.49989,
+                    0.5453445617103577,
+                    0.3180718127632141,
+                    0.4544354680919647,
+                    0.40898090638160706,
+                    0.3635263744735718,
+                    0.49989,
+                    0.40898090638160706,
+                    0.3635263744735718
+                ],
+                "runtime": "89.79"
+            },
+            {
+                "generation": 2,
+                "best_fitness": 0.5453445617103577,
+                "best_architecture": [
+                    {
+                        "filters": 32,
+                        "kernel_size": 5,
+                        "activation": "relu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 64,
+                        "kernel_size": 5,
+                        "activation": "elu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 16,
+                        "kernel_size": 5,
+                        "activation": "sigmoid",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "rate": 0.13847127089118214,
+                        "layer": "Dropout"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    }
+                ],
+                "all_fitnesses": [
+                    0.4544354680919647,
+                    0.4544354680919647,
+                    0.40898090638160706,
+                    0.40898090638160706,
+                    0.49989,
+                    0.49989,
+                    0.5453445617103577,
+                    0.4544354680919647,
+                    0.4544354680919647,
+                    0.4544354680919647,
+                    0.4544354680919647,
+                    0.49989,
+                    0.40898090638160706,
+                    0.3635263744735718
+                ],
+                "runtime": "37.21"
+            },
+            {
+                "generation": 3,
+                "best_fitness": 0.5453445617103577,
+                "best_architecture": [
+                    {
+                        "filters": 32,
+                        "kernel_size": 5,
+                        "activation": "relu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 64,
+                        "kernel_size": 5,
+                        "activation": "elu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 16,
+                        "kernel_size": 5,
+                        "activation": "sigmoid",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "rate": 0.13847127089118214,
+                        "layer": "Dropout"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    }
+                ],
+                "all_fitnesses": [
+                    0.49989,
+                    0.4544354680919647,
+                    0.40898090638160706,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.5453445617103577,
+                    0.4544354680919647,
+                    0.4544354680919647,
+                    0.4544354680919647,
+                    0.49989,
+                    0.49989,
+                    0.4544354680919647,
+                    0.3635263744735718
+                ],
+                "runtime": "48.43"
+            },
+            {
+                "generation": 4,
+                "best_fitness": 0.5453445617103577,
+                "best_architecture": [
+                    {
+                        "filters": 32,
+                        "kernel_size": 5,
+                        "activation": "relu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 64,
+                        "kernel_size": 5,
+                        "activation": "elu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 16,
+                        "kernel_size": 5,
+                        "activation": "sigmoid",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "rate": 0.13847127089118214,
+                        "layer": "Dropout"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    }
+                ],
+                "all_fitnesses": [
+                    0.49989,
+                    0.49989,
+                    0.40898090638160706,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.5453445617103577,
+                    0.4544354680919647,
+                    0.4544354680919647,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.4544354680919647,
+                    0.3635263744735718
+                ],
+                "runtime": "37.13"
+            },
+            {
+                "generation": 5,
+                "best_fitness": 0.5453445617103577,
+                "best_architecture": [
+                    {
+                        "filters": 32,
+                        "kernel_size": 5,
+                        "activation": "relu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 64,
+                        "kernel_size": 5,
+                        "activation": "elu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 16,
+                        "kernel_size": 5,
+                        "activation": "sigmoid",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "rate": 0.13847127089118214,
+                        "layer": "Dropout"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    }
+                ],
+                "all_fitnesses": [
+                    0.49989,
+                    0.49989,
+                    0.40898090638160706,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.5453445617103577,
+                    0.49989,
+                    0.4544354680919647,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.4544354680919647,
+                    0.3635263744735718
+                ],
+                "runtime": "36.38"
+            },
+            {
+                "generation": 6,
+                "best_fitness": 0.5453445617103577,
+                "best_architecture": [
+                    {
+                        "filters": 32,
+                        "kernel_size": 5,
+                        "activation": "relu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 64,
+                        "kernel_size": 5,
+                        "activation": "elu",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "filters": 16,
+                        "kernel_size": 5,
+                        "activation": "sigmoid",
+                        "layer": "Conv"
+                    },
+                    {
+                        "pool_size": 3,
+                        "layer": "MaxPooling"
+                    },
+                    {
+                        "rate": 0.13847127089118214,
+                        "layer": "Dropout"
+                    },
+                    {
+                        "pool_size": 2,
+                        "layer": "MaxPooling"
+                    }
+                ],
+                "all_fitnesses": [
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.5453445617103577,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.49989,
+                    0.4544354680919647,
+                    0.40898090638160706
+                ],
+                "runtime": "30.87"
+            }
+        ]
     }
 ]

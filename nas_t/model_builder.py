@@ -126,8 +126,11 @@ class Phenotype(pl.LightningModule):
         out_dim_1 = 1
         out_dim_2 = X_train_tensor.size(1)  # number of time steps in the input data
 
+        out_dim_tracker = [(out_dim_1, out_dim_2)]
+
         for i, layer in enumerate(genotype):
             if layer['layer'] == 'Conv':
+                # TODO add reshape layer in case it was flattened before
                 layers.append(nn.Conv1d(out_dim_1, layer['filters'], kernel_size=layer['kernel_size']))
                 out_dim_1 = layer['filters']
                 out_dim_2 = out_dim_2 - layer['kernel_size'] + 1
@@ -138,8 +141,9 @@ class Phenotype(pl.LightningModule):
                 out_dim_2 = out_dim_2 // layer['pool_size']
 
             elif layer['layer'] == 'Dense':
-                if i > 0 and genotype[i - 1]['layer'] != 'Dense':
+                if out_dim_2 != 1:  # otherwise already flattened
                     layers.append(nn.Flatten())
+                    out_dim_tracker.append((out_dim_1 * out_dim_2, 1))
                 layers.append(nn.Linear(out_dim_1 * out_dim_2, layer['units']))
                 out_dim_1 = layer['units']
                 out_dim_2 = 1
@@ -149,8 +153,16 @@ class Phenotype(pl.LightningModule):
                 layers.append(nn.Dropout(layer['rate']))
             else:
                 raise("Layer not implemented")
-        if not isinstance(layers[-1], nn.Linear):  # NOTE: add flatten layer if not linear layer before
+            out_dim_tracker.append((out_dim_1, out_dim_2))
+        if out_dim_2 != 1:  # NOTE: add flatten layer if not linear layer before
             layers.append(nn.Flatten())
+            out_dim_tracker.append((out_dim_1*out_dim_2, 1))
+        if out_dim_1*out_dim_2 < 1:
+            print(f"error: cannot be dimension {out_dim_1*out_dim_2} ({out_dim_1} x {out_dim_2})")
+            print(layers)
+            print(f"inputs dim 2: {X_train_tensor.size(1)}")
+            print(out_dim_tracker)
+            exit(32)
         layers.append(nn.Linear(out_dim_1*out_dim_2, 2))
         layers.append(nn.Softmax(dim=1))
 

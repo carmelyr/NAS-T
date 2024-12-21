@@ -34,13 +34,25 @@ def random_architecture(n=5):
         {'layer': 'Dropout', 'rate': (0.1, 0.5)}
         # {'layer': 'Activation', 'activation': ['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear']}
     ]
-
-    # Randomly shuffle and select n unique layers
-    selected_layers = random.sample(layer_options, min(n, len(layer_options)))
+    selected_layers = []
+    only_linear = False
+    # TODO select appropiate hyperparameters
+    for i in range(n):
+        random_number = random.random()
+        if random_number < 0.6 and not only_linear:  # select Convolutional block
+            selected_layers.append(layer_options[0])  # conv
+            selected_layers.append(layer_options[2])  # max pooling
+        elif random_number < 0.7:
+            selected_layers.append(layer_options[4])  # dropout
+        elif random_number < 0.9 and only_linear:
+            selected_layers.append(layer_options[3])  # dense
+            only_linear = True
+        else:
+            selected_layers.append(layer_options[1])  # zeroop
 
     architecture = []
-    layer_config = {}
     for layer in selected_layers:
+        layer_config = {}
         if layer['layer'] == 'ZeroOp':  # Skip ZeroOp layers -> no operation
             continue
         elif layer['layer'] == 'Conv':

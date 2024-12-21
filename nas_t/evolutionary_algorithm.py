@@ -50,10 +50,17 @@ class NASDifferentialEvolution:
         for i in range(len(mutant)):
             layer_type = parent1.architecture[i]['layer']
 
-            # Debugging messages
+            # Debugging messages  TODO this can be dangerous because the zeroOP makes less layers
             print(f"parent1.architecture[{i}]: {parent1.architecture[i]}")
-            print(f"parent2.architecture[{i}]: {parent2.architecture[i]}")
-            print(f"parent3.architecture[{i}]: {parent3.architecture[i]}")
+            # NOTE make sure that all parents have at least the same length as parent1
+            try:
+                print(f"parent2.architecture[{i}]: {parent2.architecture[i]}")
+            except:
+                parent2.architecture.append(parent1.architecture[i])
+            try:
+                print(f"parent3.architecture[{i}]: {parent3.architecture[i]}")
+            except:
+                parent3.architecture.append(parent1.architecture[i])
 
             if random.random() < F:
                 if layer_type == 'Conv':  # Mutate 'filters' and 'kernel_size'
@@ -103,9 +110,14 @@ class NASDifferentialEvolution:
         offspring_architecture = copy.deepcopy(parent.architecture)
         for i in range(len(offspring_architecture)):
             if random.random() < CR:
-                offspring_architecture[i] = mutant.architecture[i]
-            elif random.random() < 0.1:
-                offspring_architecture[i] = random_architecture()[i]
+                try:
+                    # TODO this requires a check that you get a fitting layer
+                    offspring_architecture[i] = mutant.architecture[i]
+                except:
+                    pass
+            # TODO this requires a check that you get a fitting layer
+            # elif random.random() < 0.1:
+            #     offspring_architecture[i] = random_architecture()[i]
         return Genotype(offspring_architecture)
     
     """
