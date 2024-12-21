@@ -1,13 +1,14 @@
 import random
 
 # Hyperparameters
-population_size = 15
+population_size = 20
 generations = 6
 F = 0.8                 # mutation factor
 CR = 0.9                # crossover rate
 alpha = 0.0001          # size penalty
 BETA = 0.00001          # time penalty
 device = 'mps'          # device to run the model on (mps: multi-processing server, cuda: GPU, cpu: CPU)
+n = 6                   # number of layers in the neural network
 
 # ---- Defines the random architecture for the neural network based on the values mentioned in the scientific paper ---- #
 """
@@ -20,9 +21,9 @@ device = 'mps'          # device to run the model on (mps: multi-processing serv
 - Activation layer applies an activation function to the output of the previous layer
 """
 # ---- Fixed layer amount and no repeated layers ---- #
-def random_architecture(n=5):
+def random_architecture():
     """
-    Generate a random architecture with n unique layers, ensuring no layer type repeats.
+    Generate a random architecture with exactly n layers.
     """
     layer_options = [
         {'layer': 'Conv', 'filters': [8, 16, 32, 64, 128], 'kernel_size': [3, 5],
@@ -36,12 +37,13 @@ def random_architecture(n=5):
     ]
     selected_layers = []
     only_linear = False
-    # TODO select appropiate hyperparameters
-    for i in range(n):
+    # TODO select appropriate hyperparameters
+    while len(selected_layers) < n:
         random_number = random.random()
         if random_number < 0.6 and not only_linear:  # select Convolutional block
-            selected_layers.append(layer_options[0])  # conv
-            selected_layers.append(layer_options[2])  # max pooling
+            if len(selected_layers) + 2 <= n:
+                selected_layers.append(layer_options[0])  # conv
+                selected_layers.append(layer_options[2])  # max pooling
         elif random_number < 0.7:
             selected_layers.append(layer_options[4])  # dropout
         elif random_number < 0.9 and only_linear:
@@ -49,6 +51,10 @@ def random_architecture(n=5):
             only_linear = True
         else:
             selected_layers.append(layer_options[1])  # zeroop
+
+        # Ensure exactly n layers
+        if len(selected_layers) > n:
+            selected_layers = selected_layers[:n]
 
     architecture = []
     for layer in selected_layers:
