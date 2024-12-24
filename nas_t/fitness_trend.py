@@ -3,14 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def plot_fitness_trend(json_file):
-    """
-    - method that plots the fitness trend of the evolutionary algorithm
-    - json_file: JSON file that contains the evolutionary run results
-    """
     with open(json_file, 'r') as file:
         data = json.load(file)
 
-    # initializes empty lists to store fitness and runtime trends
+    print("Data loaded from JSON file:")
+    print(data)  # Debug print
+
     all_fitness_trends = []
     all_runtime_trends = []
     max_generations = 0
@@ -21,11 +19,15 @@ def plot_fitness_trend(json_file):
         runtime_trend = []
 
         for generation in run["generations"]:
-            fitness_trend.append(float(generation["best_fitness"]))
-            runtime_trend.append(float(generation["runtime"]))
-            overall_runtime += float(generation["runtime"])
+            if "best_fitness" in generation:
+                fitness_trend.append(float(generation["best_fitness"]))
+            if "runtime" in generation:
+                runtime_trend.append(float(generation["runtime"]))
+            overall_runtime += float(generation.get("runtime", 0))
 
-        # appends the fitness and runtime trends of each run
+        print(f"Fitness trend for run: {fitness_trend}")  # Debug print
+        print(f"Runtime trend for run: {runtime_trend}")  # Debug print
+
         all_fitness_trends.append(fitness_trend)
         all_runtime_trends.append(runtime_trend)
         max_generations = max(max_generations, len(fitness_trend))
@@ -64,10 +66,10 @@ def plot_fitness_trend(json_file):
     axs[0].set_ylabel('Runtime in seconds')
     axs[0].set_title('Runtime')
     axs[0].legend()
-    axs[0].set_ylim(0, 300)                                 # sets y-axis limit for runtime
-    axs[0].set_yticks([0, 50, 100, 150, 200, 250, 300])     # sets y-axis ticks for runtime
+    axs[0].set_ylim(0, 300)
+    axs[0].set_yticks([0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600])
     axs[0].set_xticks(range(max_generations))
-    axs[0].set_xticklabels(range(1, max_generations + 1))   # label starting from 1
+    axs[0].set_xticklabels(range(1, max_generations + 1))
 
     # plots each run's fitness trend with a unique color
     for i, fitness_trend in enumerate(all_fitness_trends):
@@ -79,10 +81,10 @@ def plot_fitness_trend(json_file):
     axs[1].set_ylabel('Fitness')
     axs[1].set_title('Fitness')
     axs[1].legend()
-    axs[1].set_ylim(0, 1.0)                                 # sets y-axis limit for fitness
-    axs[1].set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])         # sets y-axis ticks for fitness
+    axs[1].set_ylim(0, 1.0)
+    axs[1].set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
     axs[1].set_xticks(range(max_generations))
-    axs[1].set_xticklabels(range(1, max_generations + 1))   # label starting from 1
+    axs[1].set_xticklabels(range(1, max_generations + 1))
 
     plt.show()
 

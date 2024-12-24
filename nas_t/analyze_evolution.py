@@ -14,12 +14,13 @@ with open("nas_t/evolutionary_runs.json") as file:
 fitness_data = []
 for run in data:
     for generation in run['generations']:
-        fitness_data.append({
-            "run": int(run['run_id']),
-            "generation": int(generation['generation']),
-            "fitness": generation['best_fitness'],
-            "type": "Best"
-        })
+        if 'best_fitness' in generation:
+            fitness_data.append({
+                "run": int(run['run_id']),
+                "generation": int(generation['generation']),
+                "fitness": generation['best_fitness'],
+                "type": "Best"
+            })
         if 'all_fitnesses' in generation:
             for fitness in generation['all_fitnesses']:
                 fitness_data.append({
@@ -32,8 +33,11 @@ for run in data:
 # converts the fitness data to a pandas DataFrame
 df = pd.DataFrame(fitness_data)
 
+print("Fitness Data DataFrame:")
+print(df)  # Debug print
+
 total_runs = df['run'].nunique()
-best_fitness_row = df[df['type'] == 'Best'].loc[df['fitness'].idxmax()]
+best_fitness_row = df[df['type'] == 'Best'].loc[df[df['type'] == 'Best']['fitness'].idxmax()]
 best_run_id = best_fitness_row['run']
 best_generation = best_fitness_row['generation']
 best_fitness_value = best_fitness_row['fitness']
