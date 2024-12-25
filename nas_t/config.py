@@ -37,13 +37,12 @@ def random_architecture():
     ]
     selected_layers = []
     only_linear = False
-    # TODO select appropriate hyperparameters
-    while len(selected_layers) < n:
+    # TODO select appropiate hyperparameters
+    for i in range(n):
         random_number = random.random()
         if random_number < 0.6 and not only_linear:  # select Convolutional block
-            if len(selected_layers) + 2 <= n:
-                selected_layers.append(layer_options[0])  # conv
-                selected_layers.append(layer_options[2])  # max pooling
+            selected_layers.append(layer_options[0])  # conv
+            selected_layers.append(layer_options[2])  # max pooling
         elif random_number < 0.7:
             selected_layers.append(layer_options[4])  # dropout
         elif random_number < 0.9 and only_linear:
@@ -51,10 +50,6 @@ def random_architecture():
             only_linear = True
         else:
             selected_layers.append(layer_options[1])  # zeroop
-
-        # Ensure exactly n layers
-        if len(selected_layers) > n:
-            selected_layers = selected_layers[:n]
 
     architecture = []
     for layer in selected_layers:
