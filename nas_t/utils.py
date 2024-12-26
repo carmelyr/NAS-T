@@ -29,6 +29,78 @@ def save_run_results_json(filename, run_results):
         json.dump(data, file, indent=4)
 
 
+# ---- Save accuracies to a JSON file ---- #
+def save_accuracies_json(filename, all_accuracies):
+    if os.path.exists(filename):
+        with open(filename, 'r') as file:
+            try:
+                data = json.load(file)
+                if not isinstance(data, list):  # Fix: Ensure data is a list
+                    data = []
+            except json.JSONDecodeError:
+                data = []
+    else:
+        data = []
+
+    if data:
+        latest_run_id = max(run['run_id'] for run in data)
+        run_id = latest_run_id + 1
+    else:
+        run_id = 1
+
+    run_data = {
+        "run_id": run_id,
+        "generations": []
+    }
+
+    for i, acc in enumerate(all_accuracies):
+        run_data["generations"].append({
+            "generation": i + 1,
+            "accuracies": acc
+        })
+
+    data.append(run_data)
+
+    with open(filename, 'w') as file:
+        json.dump(data, file, indent=4)
+
+
+# ---- Save model sizes to a JSON file ---- #
+def save_model_sizes_json(filename, all_model_sizes):
+    if os.path.exists(filename):
+        with open(filename, 'r') as file:
+            try:
+                data = json.load(file)
+                if not isinstance(data, list):  # Fix: Ensure data is a list
+                    data = []
+            except json.JSONDecodeError:
+                data = []
+    else:
+        data = []
+
+    if data:
+        latest_run_id = max(run['run_id'] for run in data)
+        run_id = latest_run_id + 1
+    else:
+        run_id = 1
+
+    run_data = {
+        "run_id": run_id,
+        "generations": []
+    }
+
+    for i, size in enumerate(all_model_sizes):
+        run_data["generations"].append({
+            "generation": i + 1,
+            "model_sizes": size
+        })
+
+    data.append(run_data)
+
+    with open(filename, 'w') as file:
+        json.dump(data, file, indent=4)
+
+
 """
 - method that calculates the fitness score of the architecture based on its performance
 - architecture: architecture of the neural network

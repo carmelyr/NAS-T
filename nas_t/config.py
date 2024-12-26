@@ -1,14 +1,14 @@
 import random
 
 # Hyperparameters
-population_size = 10
-generations = 5
+population_size = 20
+generations = 8
 F = 0.8                 # mutation factor
 CR = 0.9                # crossover rate
 alpha = 0.0001          # size penalty
 BETA = 0.00001          # time penalty
 device = 'mps'          # device to run the model on (mps: multi-processing server, cuda: GPU, cpu: CPU)
-n = 6                   # number of layers in the neural network
+n = 5                   # number of layers in the neural network
 
 # ---- Defines the random architecture for the neural network based on the values mentioned in the scientific paper ---- #
 """
@@ -54,7 +54,7 @@ def random_architecture():
     architecture = []
     for layer in selected_layers:
         layer_config = {}
-        if layer['layer'] == 'ZeroOp':  # Skip ZeroOp layers -> no operation
+        if layer['layer'] == 'ZeroOp':  # Skip ZeroOp layers -> no operation; the end result may have less than n layers because of this
             continue
         elif layer['layer'] == 'Conv':
             layer_config['filters'] = random.choice(layer['filters'])

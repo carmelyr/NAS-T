@@ -4,7 +4,7 @@ import time
 import json
 import os
 from config import population_size, generations, device
-from utils import save_run_results_json
+from utils import save_run_results_json, save_accuracies_json, save_model_sizes_json
 from model_builder import Phenotype, Genotype, random_architecture
 
 class NASDifferentialEvolution:
@@ -181,7 +181,18 @@ class NASDifferentialEvolution:
 
         # Append new accuracies data
         new_accuracies_data = [{"generation": i + 1, "accuracies": acc} for i, acc in enumerate(all_accuracies)]
-        accuracies_data["generations"].extend(new_accuracies_data)
+        if isinstance(accuracies_data, list):
+            # Append data for the latest run
+            accuracies_data.append({
+                "run_id": len(accuracies_data) + 1,
+                "generations": new_accuracies_data
+            })
+        else:
+            # Fallback in case data is not a list
+            accuracies_data = [{
+                "run_id": 1,
+                "generations": new_accuracies_data
+            }]
 
         # Load existing model sizes data
         if os.path.exists('nas_t/model_sizes.json'):
@@ -195,7 +206,16 @@ class NASDifferentialEvolution:
 
         # Append new model sizes data
         new_model_sizes_data = [{"generation": i + 1, "model_sizes": size} for i, size in enumerate(all_model_sizes)]
-        model_sizes_data["generations"].extend(new_model_sizes_data)
+        if isinstance(model_sizes_data, list):
+            model_sizes_data.append({
+                "run_id": len(model_sizes_data) + 1,
+                "generations": new_model_sizes_data
+            })
+        else:
+            model_sizes_data = [{
+                "run_id": 1,
+                "generations": new_model_sizes_data
+            }]
 
         # Save updated accuracies data
         with open('nas_t/accuracies.json', 'w') as f:
@@ -214,3 +234,5 @@ class NASDifferentialEvolution:
                 print(f"Generation {gen['generation']}:\n Fitness {gen['best_fitness']}\nRuntime {gen['runtime']} seconds\n Architecture: {gen['best_architecture']}\n")
 
         save_run_results_json("nas_t/evolutionary_runs.json", run_results)
+        save_accuracies_json('nas_t/accuracies.json', all_accuracies)
+        save_model_sizes_json('nas_t/model_sizes.json', all_model_sizes)
