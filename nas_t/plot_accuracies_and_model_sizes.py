@@ -80,6 +80,19 @@ def plot_accuracies_and_model_sizes(accuracies_file, model_sizes_file):
     axs[1].set_title('Model Sizes')
     axs[1].legend(loc='upper left')
 
+    # Set x-axis ticks as ranges for both plots
+    x_ticks = np.arange(0, num_generations + 1, 1)
+    x_labels = [ i+1 for i in range(len(x_ticks) - 1)]
+    axs[0].set_xticks(x_ticks[:-1] + 0.5)
+    axs[0].set_xticklabels(x_labels)
+    axs[1].set_xticks(x_ticks[:-1] + 0.5)
+    axs[1].set_xticklabels(x_labels)
+
+    # Add vertical lines to indicate new generations
+    for gen_idx in range(1, num_generations):
+        axs[0].axvline(x=gen_idx, color='gray', linestyle='-', alpha=0.6)
+        axs[1].axvline(x=gen_idx, color='gray', linestyle='-', alpha=0.6)
+
     plt.tight_layout()
     plt.show()
 
