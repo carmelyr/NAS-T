@@ -31,72 +31,64 @@ def save_run_results_json(filename, run_results):
 
 # ---- Save accuracies to a JSON file ---- #
 def save_accuracies_json(filename, all_accuracies):
+    # Load existing data
     if os.path.exists(filename):
         with open(filename, 'r') as file:
             try:
                 data = json.load(file)
-                if not isinstance(data, list):  # Fix: Ensure data is a list
+                if not isinstance(data, list):  # Ensure data is a list
                     data = []
             except json.JSONDecodeError:
                 data = []
     else:
         data = []
 
-    if data:
-        latest_run_id = max(run['run_id'] for run in data)
-        run_id = latest_run_id + 1
-    else:
+    # Assign run ID dynamically
+    if len(data) == 0:  # No previous data, start fresh
         run_id = 1
+    else:
+        run_id = max(run['run_id'] for run in data) + 1
 
+    # Prepare data for the current run
     run_data = {
         "run_id": run_id,
-        "generations": []
+        "generations": [{"generation": i + 1, "accuracies": acc} for i, acc in enumerate(all_accuracies)]
     }
 
-    for i, acc in enumerate(all_accuracies):
-        run_data["generations"].append({
-            "generation": i + 1,
-            "accuracies": acc
-        })
-
+    # Append new data and save
     data.append(run_data)
-
     with open(filename, 'w') as file:
         json.dump(data, file, indent=4)
 
 
 # ---- Save model sizes to a JSON file ---- #
 def save_model_sizes_json(filename, all_model_sizes):
+    # Load existing data
     if os.path.exists(filename):
         with open(filename, 'r') as file:
             try:
                 data = json.load(file)
-                if not isinstance(data, list):  # Fix: Ensure data is a list
+                if not isinstance(data, list):  # Ensure data is a list
                     data = []
             except json.JSONDecodeError:
                 data = []
     else:
         data = []
 
-    if data:
-        latest_run_id = max(run['run_id'] for run in data)
-        run_id = latest_run_id + 1
-    else:
+    # Assign run ID dynamically
+    if len(data) == 0:  # No previous data, start fresh
         run_id = 1
+    else:
+        run_id = max(run['run_id'] for run in data) + 1
 
+    # Prepare data for the current run
     run_data = {
         "run_id": run_id,
-        "generations": []
+        "generations": [{"generation": i + 1, "model_sizes": size} for i, size in enumerate(all_model_sizes)]
     }
 
-    for i, size in enumerate(all_model_sizes):
-        run_data["generations"].append({
-            "generation": i + 1,
-            "model_sizes": size
-        })
-
+    # Append new data and save
     data.append(run_data)
-
     with open(filename, 'w') as file:
         json.dump(data, file, indent=4)
 

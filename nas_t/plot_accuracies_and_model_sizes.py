@@ -2,12 +2,15 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_accuracies_and_model_sizes(accuracies_file, model_sizes_file):
+def plot_accuracies_and_model_sizes(accuracies_file, model_sizes_file, standard_results_file):
     with open(accuracies_file, 'r') as file:
         accuracies_data = json.load(file)
 
     with open(model_sizes_file, 'r') as file:
         model_sizes_data = json.load(file)
+
+    with open(standard_results_file, 'r') as file:
+        standard_results = json.load(file)
 
     # Ensure only valid runs are processed
     num_runs = min(len(accuracies_data), len(model_sizes_data))
@@ -33,14 +36,12 @@ def plot_accuracies_and_model_sizes(accuracies_file, model_sizes_file):
         all_accuracies_combined.extend(accuracies_y)
         accuracies_x_combined.extend(accuracies_x)
         axs[0].plot(accuracies_x, accuracies_y, color=colormap(run_idx % colormap.N), label=f'Accuracy Run {run_idx + 1}')
+        
+        # Set y-ticks for accuracy plot
+        axs[0].set_yticks(np.arange(0, 1.1, 0.1))
 
-    # Calculate overall average accuracy across all runs
-    num_generations = len(accuracies_data[0]["generations"])
-    avg_accuracies = [np.mean([run["generations"][gen]["accuracies"] for run in accuracies_data[:num_runs]]) for gen in range(num_generations)]
-    axs[0].plot(np.linspace(0, num_generations, len(accuracies_x_combined)), 
-                np.interp(np.linspace(0, num_generations, len(accuracies_x_combined)), 
-                          range(0, num_generations), avg_accuracies), 
-                'k--', label='Avg Accuracy')
+    # Plot standard model accuracy
+    axs[0].axhline(standard_results['final_accuracy'], color='red', linestyle='--', label='Standard Accuracy')
 
     # Process model sizes
     all_model_sizes_combined = []
@@ -59,41 +60,23 @@ def plot_accuracies_and_model_sizes(accuracies_file, model_sizes_file):
         model_sizes_x_combined.extend(model_sizes_x)
         axs[1].plot(model_sizes_x, model_sizes_y, color=colormap(run_idx % colormap.N), label=f'Model Size Run {run_idx + 1}')
 
-    # Calculate overall average model size across all runs
-    avg_model_sizes = [np.mean([run["generations"][gen]["model_sizes"] for run in model_sizes_data[:num_runs]]) for gen in range(num_generations)]
-    axs[1].plot(np.linspace(0, num_generations, len(model_sizes_x_combined)), 
-                np.interp(np.linspace(0, num_generations, len(model_sizes_x_combined)), 
-                          range(0, num_generations), avg_model_sizes), 
-                'k--', label='Avg Model Size')
+    # Plot standard model size
+    axs[1].axhline(standard_results['final_model_size'], color='red', linestyle='--', label='Standard Model Size')
 
     # Configure Accuracy plot
     axs[0].set_xlabel('Generation')
     axs[0].set_ylabel('Accuracy')
     axs[0].set_title('Accuracies')
     axs[0].set_ylim(0, 1.0)
-    axs[0].set_yticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
-    axs[0].legend(loc='upper left')
+    axs[0].legend(loc='upper right')
 
     # Configure Model Sizes plot
     axs[1].set_xlabel('Generation')
     axs[1].set_ylabel('Model Size')
     axs[1].set_title('Model Sizes')
-    axs[1].legend(loc='upper left')
-
-    # Set x-axis ticks as ranges for both plots
-    x_ticks = np.arange(0, num_generations + 1, 1)
-    x_labels = [ i+1 for i in range(len(x_ticks) - 1)]
-    axs[0].set_xticks(x_ticks[:-1] + 0.5)
-    axs[0].set_xticklabels(x_labels)
-    axs[1].set_xticks(x_ticks[:-1] + 0.5)
-    axs[1].set_xticklabels(x_labels)
-
-    # Add vertical lines to indicate new generations
-    for gen_idx in range(1, num_generations):
-        axs[0].axvline(x=gen_idx, color='gray', linestyle='-', alpha=0.6)
-        axs[1].axvline(x=gen_idx, color='gray', linestyle='-', alpha=0.6)
+    axs[1].legend(loc='upper right')
 
     plt.tight_layout()
     plt.show()
 
-plot_accuracies_and_model_sizes('nas_t/accuracies.json', 'nas_t/model_sizes.json')
+plot_accuracies_and_model_sizes('nas_t/accuracies.json', 'nas_t/model_sizes.json', 'nas_t/standard_results.json')
