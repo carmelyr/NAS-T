@@ -11,26 +11,26 @@ class StandardArchitecture(pl.LightningModule):
         super(StandardArchitecture, self).__init__()
 
         # Calculate flattened size after convolutions and pooling
-        conv1_output = ((input_size - 3 + 1) // 2)  # Conv1 + Pool1
-        conv2_output = ((conv1_output - 3 + 1) // 2)  # Conv2 + Pool2
-        flattened_size = conv2_output * 32
+        conv1_output = ((input_size - 5 + 1) // 2)  # Conv1 + Pool1 (larger kernel)
+        conv2_output = ((conv1_output - 5 + 1) // 2)  # Conv2 + Pool2 (larger kernel)
+        flattened_size = conv2_output * 16  # Fewer filters in the second layer
 
         # Define the architecture
         self.model = nn.Sequential(
-            nn.Conv1d(1, 16, kernel_size=3),
+            nn.Conv1d(1, 8, kernel_size=5),  # Fewer filters, larger kernel
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2),
 
-            nn.Conv1d(16, 32, kernel_size=3),
+            nn.Conv1d(8, 16, kernel_size=5),  # Fewer filters, larger kernel
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2),
 
             nn.Flatten(),
-            nn.Linear(flattened_size, 64),
+            nn.Linear(flattened_size, 32),  # Smaller dense layer
             nn.ReLU(),
             nn.Dropout(0.5),
 
-            nn.Linear(64, 2),
+            nn.Linear(32, 2),
             nn.Softmax(dim=1)
         )
 
@@ -79,4 +79,3 @@ class StandardArchitecture(pl.LightningModule):
         }
         with open(filename, 'w') as f:
             json.dump(results, f, indent=4)
-
