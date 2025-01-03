@@ -101,6 +101,8 @@ class NASDifferentialEvolution:
                 generation_model_sizes.append(parent_size)
                 generation_fitnesses.append(parent_fitness)
                 generation_fitnesses.append(offspring_fitness)
+                generation_accuracies.append(offspring_accuracy)
+                generation_model_sizes.append(offspring_size)
 
                 if offspring_fitness > parent_fitness:
                     new_population.append(offspring)
