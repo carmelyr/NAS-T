@@ -63,6 +63,12 @@ def plot_accuracies_and_model_sizes(accuracies_file, model_sizes_file, standard_
     # Plot standard model size
     axs[1].axhline(standard_results['final_model_size'], color='red', linestyle='--', label='Standard Model Size')
 
+    # Add vertical lines for generations
+    max_generation = max(len(run["generations"]) for run in accuracies_data)
+    for gen in range(1, max_generation + 1):
+        axs[0].axvline(gen, color='gray', linestyle='--', linewidth=0.5)
+        axs[1].axvline(gen, color='gray', linestyle='--', linewidth=0.5)
+
     # Configure Accuracy plot
     axs[0].set_xlabel('Generation')
     axs[0].set_ylabel('Accuracy')

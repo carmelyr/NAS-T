@@ -51,6 +51,9 @@ def random_architecture():
         else:
             selected_layers.append(layer_options[1])  # zeroop
 
+    # Ensure exactly n layers
+    selected_layers = selected_layers[:n]
+
     architecture = []
     for layer in selected_layers:
         layer_config = {}

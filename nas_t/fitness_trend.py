@@ -67,7 +67,7 @@ def plot_fitness_trend(json_file):
     axs[0].set_title('Runtime')
     axs[0].legend()
     axs[0].set_ylim(0, 300)
-    axs[0].set_yticks([0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600])
+    axs[0].set_yticks([0, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800, 850, 900, 950, 1000])
     axs[0].set_xticks(range(max_generations))
     axs[0].set_xticklabels(range(1, max_generations + 1))
 
