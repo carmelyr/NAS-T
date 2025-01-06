@@ -19,20 +19,33 @@ def plot_model_sizes(model_sizes_file, standard_results_file):
     colormap = plt.get_cmap('tab10')
 
     # Process model sizes
+    max_model_size = 0
     for run_idx in range(num_runs):
         run = model_sizes_data[run_idx]
-        model_sizes_x = []
-        model_sizes_y = []
+        sizes_x = []
+        sizes_y = []
         for gen_idx, generation in enumerate(run["generations"]):
-            size = generation["model_sizes"]
-            step = 1 / len(size)
-            # Shift x-axis to start at generation 1
-            model_sizes_x.extend(np.linspace(gen_idx + 1, gen_idx + 1 + 1 - step, len(size)))
-            model_sizes_y.extend(size)
-        plt.plot(model_sizes_x, model_sizes_y, color=colormap(run_idx % colormap.N), label=f'Model Size Run {run_idx + 1}')
+            sizes = generation["model_sizes"]
+            step = 1 / len(sizes)
 
-    # Plot standard model size
-    plt.axhline(standard_results['final_model_size'], color='red', linestyle='--', label='Standard Model Size')
+            # Ensure model sizes are integers
+            sizes = [int(size) for size in sizes]
+
+            # Shift x-axis to start at generation 1
+            sizes_x.extend(np.linspace(gen_idx + 1, gen_idx + 1 + 1 - step, len(sizes)))
+            sizes_y.extend(sizes)
+            max_model_size = max(max_model_size, max(sizes))  # Track max size for scaling
+
+        plt.plot(sizes_x, sizes_y, color=colormap(run_idx % colormap.N), label=f'Model Size Run {run_idx + 1}')
+
+    # Get the standard model size
+    standard_model_size = int(standard_results['final_model_size'])
+
+    # Update max size to include the standard model size
+    max_model_size = max(max_model_size, standard_model_size)
+
+    # Plot standard model size as a horizontal dashed line
+    plt.axhline(standard_model_size, color='red', linestyle='--', label='Standard Model Size')
 
     # Add vertical dashed lines for generation ranges
     max_generation = max(len(run["generations"]) for run in model_sizes_data)
@@ -43,10 +56,17 @@ def plot_model_sizes(model_sizes_file, standard_results_file):
     plt.xlabel('Generation')
     plt.ylabel('Model Size')
     plt.title('Model Sizes')
+
+    # Set Y-axis dynamically based on data range and fixed intervals of 100,000
+    plt.ylim(0, max_model_size * 1.1)  # Slightly higher than max size for padding
+    plt.yticks(np.arange(0, max_model_size * 1.1, 100000))  # Dynamic ticks based on max size
+
+    # Set x-axis ticks for generations
     plt.xticks(range(1, max_generation + 1))  # Set x-axis ticks to match generations
     plt.legend(loc='upper right')
 
     plt.tight_layout()
     plt.show()
 
+# Example call
 plot_model_sizes('nas_t/model_sizes.json', 'nas_t/standard_results.json')

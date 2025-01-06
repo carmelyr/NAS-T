@@ -33,8 +33,8 @@ class Genotype:
 
         early_stop_callback = EarlyStopping(monitor='val_acc', patience=12, mode='max')
 
-        trainer = pl.Trainer(min_epochs=10,                         # trains the model for at least 10 epochs
-                             max_epochs=100,                        # trains the model for maximum 100 epochs
+        trainer = pl.Trainer(min_epochs=20,                         # trains the model for at least 20 epochs
+                             max_epochs=200,                        # trains the model for maximum 200 epochs
                              logger=False,
                              accelerator='cpu',                     # uses the CPU for training
                              enable_checkpointing=False,            # disables checkpointing to save the model

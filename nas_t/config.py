@@ -1,10 +1,10 @@
 import random
 
 # Hyperparameters
-population_size = 14
-generations = 5
-F = 0.8                 # mutation factor
-CR = 0.9                # crossover rate
+population_size = 25    # number of individuals in the population
+generations = 20
+F = 0.6                 # mutation factor
+CR = 0.7                # crossover rate
 alpha = 0.0001          # size penalty
 BETA = 0.00001          # time penalty
 device = 'mps'          # device to run the model on (mps: multi-processing server, cuda: GPU, cpu: CPU)

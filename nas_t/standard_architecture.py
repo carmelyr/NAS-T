@@ -10,27 +10,35 @@ class StandardArchitecture(pl.LightningModule):
     def __init__(self, input_size):
         super(StandardArchitecture, self).__init__()
 
-        # Calculate flattened size after convolutions and pooling
-        conv1_output = ((input_size - 5 + 1) // 2)  # Conv1 + Pool1 (larger kernel)
-        conv2_output = ((conv1_output - 5 + 1) // 2)  # Conv2 + Pool2 (larger kernel)
-        flattened_size = conv2_output * 16  # Fewer filters in the second layer
+        # Calculate output sizes
+        conv1_output = ((input_size - 7) // 2) + 1  # Conv1 with smaller kernel
+        pool1_output = conv1_output // 2  # Pool1
+
+        conv2_output = ((pool1_output - 7) // 2) + 1  # Conv2 with smaller kernel
+        pool2_output = conv2_output // 2  # Pool2
+
+        flattened_size = pool2_output * 64  # Reduce number of filters
 
         # Define the architecture
         self.model = nn.Sequential(
-            nn.Conv1d(1, 8, kernel_size=5),  # Fewer filters, larger kernel
+            nn.Conv1d(1, 32, kernel_size=7, stride=2),  # Fewer filters, smaller kernel
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2),
 
-            nn.Conv1d(8, 16, kernel_size=5),  # Fewer filters, larger kernel
+            nn.Conv1d(32, 64, kernel_size=7, stride=2),  # Fewer filters, smaller kernel
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=2),
 
             nn.Flatten(),
-            nn.Linear(flattened_size, 32),  # Smaller dense layer
+            nn.Linear(flattened_size, 128),  # Smaller dense layer
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.8),  # Slightly lower dropout
 
-            nn.Linear(32, 2),
+            nn.Linear(128, 64),  # Smaller additional dense layer
+            nn.ReLU(),
+            nn.Dropout(0.8),
+
+            nn.Linear(64, 2),
             nn.Softmax(dim=1)
         )
 

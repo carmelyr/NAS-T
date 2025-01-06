@@ -3,7 +3,7 @@ import random
 import time
 import json
 import os
-from config import population_size, generations, device
+from config import population_size, generations, device, F, CR
 from utils import save_run_results_json, save_accuracies_json, save_model_sizes_json
 from model_builder import Phenotype, Genotype, random_architecture
 
@@ -76,10 +76,10 @@ class NASDifferentialEvolution:
             generation_model_sizes = []
             generation_fitnesses = []
 
-            initial_F, final_F = 0.9, 0.5
-            initial_CR, final_CR = 0.9, 0.7
-            F = initial_F - (generation / self.generations) * (initial_F - final_F)
-            CR = initial_CR - (generation / self.generations) * (initial_CR - final_CR)
+            #initial_F, final_F = 0.9, 0.5
+            #initial_CR, final_CR = 0.9, 0.7
+            #F = initial_F - (generation / self.generations) * (initial_F - final_F)
+            #CR = initial_CR - (generation / self.generations) * (initial_CR - final_CR)
 
             new_population = []
 
