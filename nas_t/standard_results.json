@@ -1,0 +1,32 @@
+[
+    {
+        "run_id": 1,
+        "final_accuracy": 0.40909090638160706,
+        "final_model_size": 621186,
+        "runtime": 68.56866002082825
+    },
+    {
+        "run_id": 2,
+        "final_accuracy": 0.4545454680919647,
+        "final_model_size": 621186,
+        "runtime": 70.76636695861816
+    },
+    {
+        "run_id": 3,
+        "final_accuracy": 0.3636363744735718,
+        "final_model_size": 621186,
+        "runtime": 67.02011585235596
+    },
+    {
+        "run_id": 4,
+        "final_accuracy": 0.4545454680919647,
+        "final_model_size": 621186,
+        "runtime": 66.81786489486694
+    },
+    {
+        "run_id": 5,
+        "final_accuracy": 0.4545454680919647,
+        "final_model_size": 621186,
+        "runtime": 67.21746110916138
+    }
+]
