@@ -79,7 +79,7 @@ for run_id in range(1, total_runs + 1):
     run_markers.append(mlines.Line2D([], [], color=color_map[run_id], marker='o', linestyle='None', markersize=5, alpha=0.8, label=f'Run {run_id} Best'))
 
 # adds the legend to the plot
-plt.legend(handles=run_markers, loc='lower left', fontsize=8)
+plt.legend(handles=run_markers, loc='lower left', fontsize='x-small')
 
 # adds annotations to the plot
 cursor = mplcursors.cursor(hover=True)

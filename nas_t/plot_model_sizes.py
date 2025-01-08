@@ -38,32 +38,25 @@ def plot_model_sizes(model_sizes_file, standard_results_file):
 
         plt.plot(sizes_x, sizes_y, color=colormap(run_idx % colormap.N), label=f'Model Size Run {run_idx + 1}')
 
-    # Get the standard model size
-    standard_model_size = int(standard_results['final_model_size'])
-
-    # Update max size to include the standard model size
-    max_model_size = max(max_model_size, standard_model_size)
-
-    # Plot standard model size as a horizontal dashed line
-    plt.axhline(standard_model_size, color='red', linestyle='--', label='Standard Model Size')
-
-    # Add vertical dashed lines for generation ranges
-    max_generation = max(len(run["generations"]) for run in model_sizes_data)
-    for gen in range(1, max_generation + 1):
-        plt.axvline(gen, color='gray', linestyle='--', linewidth=0.5)
+    # Process standard results
+    for idx, standard in enumerate(standard_results):
+        standard_model_size = int(standard['final_model_size'])
+        plt.axhline(standard_model_size, color=colormap((idx + num_runs) % colormap.N), 
+                    linestyle='--', label=f'Standard {idx + 1}')
 
     # Configure plot
     plt.xlabel('Generation')
     plt.ylabel('Model Size')
     plt.title('Model Sizes')
 
-    # Set Y-axis dynamically based on data range and fixed intervals of 100,000
-    plt.ylim(0, max_model_size * 1.1)  # Slightly higher than max size for padding
-    plt.yticks(np.arange(0, max_model_size * 1.1, 100000))  # Dynamic ticks based on max size
+    # Adjust Y-axis dynamically
+    plt.ylim(0, 1000000)
+    plt.yticks(np.arange(0, 1000000, 100000))
 
     # Set x-axis ticks for generations
-    plt.xticks(range(1, max_generation + 1))  # Set x-axis ticks to match generations
-    plt.legend(loc='upper right')
+    max_generation = max(len(run["generations"]) for run in model_sizes_data)
+    plt.xticks(range(1, max_generation + 1))
+    plt.legend(loc='upper right', fontsize='x-small')
 
     plt.tight_layout()
     plt.show()

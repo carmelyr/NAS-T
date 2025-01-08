@@ -13,12 +13,13 @@ def plot_accuracies(accuracies_file, standard_results_file):
     num_runs = len(accuracies_data)
 
     # Create plot
-    plt.figure(figsize=(15, 6))  # Increased width to make x-axis ranges wider
+    plt.figure(figsize=(15, 6))
 
     # Define color map
     colormap = plt.get_cmap('tab10')
 
-    # Process accuracies
+    # Process accuracies for evolutionary runs
+    max_generations = len(accuracies_data[0]['generations'])
     for run_idx in range(num_runs):
         run = accuracies_data[run_idx]
         accuracies_x = []
@@ -26,26 +27,25 @@ def plot_accuracies(accuracies_file, standard_results_file):
         for gen_idx, generation in enumerate(run["generations"]):
             acc = generation["accuracies"]
             step = 1 / len(acc)
-            # Shift x-axis to start at generation 1
-            accuracies_x.extend(np.linspace(gen_idx + 1, gen_idx + 1 + 1 - step, len(acc)))
+            accuracies_x.extend(np.linspace(gen_idx + 1, gen_idx + 2 - step, len(acc)))
             accuracies_y.extend(acc)
         plt.plot(accuracies_x, accuracies_y, color=colormap(run_idx % colormap.N), label=f'Accuracy Run {run_idx + 1}')
 
-    # Plot standard model accuracy
-    plt.axhline(standard_results['final_accuracy'], color='red', linestyle='--', label='Standard Accuracy')
+    # Process standard results
+    for idx, standard in enumerate(standard_results):
+        standard_accuracy = standard['final_accuracy']
+        generations = list(range(1, max_generations + 2))
+        accuracies = [standard_accuracy] * len(generations)
+        plt.plot(generations, accuracies, linestyle='--', 
+                 color=colormap((idx + num_runs) % colormap.N), label=f'Standard {idx + 1}')
 
-    # Add vertical dashed lines for generation ranges
-    max_generation = max(len(run["generations"]) for run in accuracies_data)
-    for gen in range(1, max_generation + 1):
-        plt.axvline(gen, color='gray', linestyle='--', linewidth=0.5)
-
-    # Configure plot
     plt.xlabel('Generation')
     plt.ylabel('Accuracy')
     plt.title('Accuracies')
     plt.ylim(0, 1.0)
-    plt.xticks(range(1, max_generation + 1))  # Set x-axis ticks to match generations
-    plt.legend(loc='upper right')
+    plt.xlim(1, max_generations + 1)  
+    plt.xticks(range(1, max_generations + 1))
+    plt.legend(loc='lower left', fontsize='x-small')
 
     plt.tight_layout()
     plt.show()
