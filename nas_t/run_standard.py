@@ -18,7 +18,7 @@ input_size = X_train_tensor.size(1)  # Number of features or time steps in the i
 model = StandardArchitecture(input_size)
 
 # Define training parameters
-trainer = pl.Trainer(max_epochs=500, logger=False, enable_checkpointing=False, enable_progress_bar=True)
+trainer = pl.Trainer(max_epochs=200, logger=False, enable_checkpointing=False, enable_progress_bar=True)
 
 # Train and validate the model
 trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=validation_loader)
