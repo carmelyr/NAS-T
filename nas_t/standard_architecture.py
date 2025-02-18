@@ -14,13 +14,13 @@ class StandardArchitecture(pl.LightningModule):
         self.runtime = None
 
         # calculates output sizes
-        conv1_output = ((input_size - 7) // 2) + 1  # Conv1 with smaller kernel
-        pool1_output = conv1_output // 2  # Pool1
+        conv1_output = ((input_size - 7) // 2) + 1      # Conv1 with smaller kernel
+        pool1_output = conv1_output // 2                # Pool1
 
-        conv2_output = ((pool1_output - 7) // 2) + 1  # Conv2 with smaller kernel
-        pool2_output = conv2_output // 2  # Pool2
+        conv2_output = ((pool1_output - 7) // 2) + 1    # Conv2 with smaller kernel
+        pool2_output = conv2_output // 2                # Pool2
 
-        flattened_size = pool2_output * 64  # reduces number of filters
+        flattened_size = pool2_output * 64              # reduces number of filters
 
         # standard architecture
         self.model = nn.Sequential(
@@ -83,13 +83,12 @@ class StandardArchitecture(pl.LightningModule):
         self.model_sizes.append(model_size)
 
     def on_train_start(self):
-        self.start_time = time.time()  # Record start time
+        self.start_time = time.time()
 
     def on_train_end(self):
         self.runtime = time.time() - self.start_time
 
     def save_results(self, filename):
-        # Load existing results if the file already exists
         if os.path.exists(filename):
             with open(filename, 'r') as f:
                 try:
@@ -99,11 +98,9 @@ class StandardArchitecture(pl.LightningModule):
         else:
             existing_data = []
 
-        # Ensure data format is a list
         if not isinstance(existing_data, list):
             existing_data = []
 
-        # Append new results
         results = {
             "run_id": len(existing_data) + 1,
             "final_accuracy": self.accuracies[-1] if self.accuracies else None,
@@ -112,6 +109,5 @@ class StandardArchitecture(pl.LightningModule):
         }
         existing_data.append(results)
 
-        # Save updated results
         with open(filename, 'w') as f:
             json.dump(existing_data, f, indent=4)

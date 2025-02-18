@@ -20,11 +20,8 @@ n = 5                   # number of layers in the neural network
 - Dropout layer randomly sets a fraction of input units to zero to prevent overfitting
 - Activation layer applies an activation function to the output of the previous layer
 """
-# ---- Fixed layer amount and no repeated layers ---- #
 def random_architecture():
-    """
-    Generate a random architecture with exactly n layers.
-    """
+    # generate a random architecture with exactly n layers.
     layer_options = [
         {'layer': 'Conv', 'filters': [8, 16, 32, 64, 128], 'kernel_size': [3, 5],
          'activation': ['relu', 'elu', 'selu', 'sigmoid', 'linear']},
@@ -35,23 +32,24 @@ def random_architecture():
         {'layer': 'Dropout', 'rate': (0.1, 0.5)}
         # {'layer': 'Activation', 'activation': ['softmax', 'elu', 'selu', 'relu', 'sigmoid', 'linear']}
     ]
+
     selected_layers = []
     only_linear = False
-    # TODO select appropiate hyperparameters
+
     for i in range(n):
         random_number = random.random()
-        if random_number < 0.6 and not only_linear:  # select Convolutional block
-            selected_layers.append(layer_options[0])  # conv
-            selected_layers.append(layer_options[2])  # max pooling
+        if random_number < 0.6 and not only_linear:     # select Convolutional block
+            selected_layers.append(layer_options[0])    # conv
+            selected_layers.append(layer_options[2])    # max pooling
         elif random_number < 0.7:
-            selected_layers.append(layer_options[4])  # dropout
+            selected_layers.append(layer_options[4])    # dropout
         elif random_number < 0.9 and only_linear:
-            selected_layers.append(layer_options[3])  # dense
+            selected_layers.append(layer_options[3])    # dense
             only_linear = True
         else:
-            selected_layers.append(layer_options[1])  # zeroop
+            selected_layers.append(layer_options[1])    # zeroop
 
-    # Ensure exactly n layers
+    # makes sure that the architecture has exactly n layers; takes the first n layers (slicing)
     selected_layers = selected_layers[:n]
 
     architecture = []

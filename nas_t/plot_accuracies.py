@@ -2,16 +2,15 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.lines import Line2D  # For custom legend entries
+from matplotlib.lines import Line2D
 
-# Load data
 with open("nas_t/accuracies.json") as file:
     accuracies_data = json.load(file)
 
 with open("nas_t/standard_results.json") as file:
     standard_results = json.load(file)
 
-# Prepare accuracy data
+# prepares accuracy data
 accuracy_data = []
 for run in accuracies_data:
     for generation in run['generations']:
@@ -22,10 +21,10 @@ for run in accuracies_data:
                 "accuracy": acc
             })
 
-# Convert to DataFrame
+# converts to DataFrame
 df = pd.DataFrame(accuracy_data)
 
-# Generate subplots for all runs
+# generates subplots for all runs
 unique_runs = df['run'].unique()
 num_runs = len(unique_runs)
 fig, axes = plt.subplots(1, num_runs, figsize=(6 * num_runs, 4), sharey=True)
@@ -37,26 +36,26 @@ for i, run_id in enumerate(unique_runs):
     ax = axes[i]
     subset = df[df['run'] == run_id]
 
-    # Process generations
+    # process generations
     generations = sorted([int(gen) for gen in subset['generation'].unique()])
     shifted_generations = [gen - min(generations) for gen in generations]
 
-    # Boxplot for accuracy distribution
+    # boxplot for accuracy distribution
     boxplot_data = [subset[subset['generation'] == gen]['accuracy'].values for gen in generations]
     ax.boxplot(boxplot_data, positions=shifted_generations, widths=0.6,
                medianprops=dict(color='deepskyblue', linestyle='--', linewidth=1))
 
-    # Add standard model baseline
+    # adds standard model baseline
     standard_result = [res for res in standard_results if res['run_id'] == run_id][0]
     standard_accuracy = standard_result['final_accuracy']
     ax.axhline(standard_accuracy, color='red', linestyle='--', linewidth=2, label=f"Standard Model (Run {run_id})")
 
-    # Plot mean accuracy trendline
+    # plots mean accuracy trendline
     generation_means = [np.mean(data) for data in boxplot_data]
     ax.plot(shifted_generations, generation_means, color='plum', marker='o', markersize=5,
             linestyle='-', label='Mean Accuracy Trend', zorder=3)
 
-    # Formatting
+    # formatting
     ax.set_title(f"Run {run_id}")
     ax.set_xlabel("Generation")
     if i == 0:
@@ -68,7 +67,7 @@ for i, run_id in enumerate(unique_runs):
     ax.set_ylim(0, 1.0)
     ax.grid(True)
 
-# Shared legend
+# legend
 custom_legend = [
     Line2D([0], [0], color='plum', marker='o', linestyle='-', label='Mean Accuracy Trend'),
     Line2D([0], [0], color='deepskyblue', linestyle='--', label='Median Accuracy'),

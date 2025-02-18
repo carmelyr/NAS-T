@@ -5,8 +5,9 @@ import json
 import os
 from config import population_size, generations, device, F, CR
 from utils import save_run_results_json, save_accuracies_json, save_model_sizes_json
-from model_builder import Phenotype, Genotype, random_architecture
+from model_builder import Genotype
 
+# evolutionary algorithm class
 class NASDifferentialEvolution:
     def __init__(self, population_size=population_size, generations=generations, verbose=True):
         self.population_size = population_size
@@ -14,9 +15,11 @@ class NASDifferentialEvolution:
         self.population = self.initialize_population()
         self.verbose = verbose
 
+    # initializes the population with random architectures
     def initialize_population(self):
         return [Genotype(device=device) for _ in range(self.population_size)]
 
+    # mutation operation
     def mutate(self, parent1, parent2, parent3, F):
         mutant = copy.deepcopy(parent1.architecture)
         filter_options = [8, 16, 32, 64, 128, 256]
@@ -50,6 +53,7 @@ class NASDifferentialEvolution:
 
         return Genotype(mutant)
 
+    # crossover operation
     def crossover(self, parent, mutant, CR):
         offspring_architecture = copy.deepcopy(parent.architecture)
         for i in range(len(offspring_architecture)):
@@ -60,6 +64,7 @@ class NASDifferentialEvolution:
                     continue
         return Genotype(offspring_architecture)
 
+    # evolution process
     def evolve(self):
         run_results = {"run_id": 1, "generations": []}
         best_fitness_so_far = float('-inf')
@@ -76,6 +81,7 @@ class NASDifferentialEvolution:
             generation_model_sizes = []
             generation_fitnesses = []
 
+            # dynamic values for mutation and crossover
             #initial_F, final_F = 0.9, 0.5
             #initial_CR, final_CR = 0.9, 0.7
             #F = initial_F - (generation / self.generations) * (initial_F - final_F)
@@ -83,8 +89,11 @@ class NASDifferentialEvolution:
 
             new_population = []
 
+            # elitism: select the top 10% of the population based on fitness
             elitism_count = max(1, int(0.1 * self.population_size))
+            # sort the population based on fitness (descending order)
             sorted_population = sorted(self.population, key=lambda ind: ind.fitness or float('-inf'), reverse=True)
+            # add the top 10% of the population to the new population
             new_population.extend(sorted_population[:elitism_count])
 
             for i in range(elitism_count, self.population_size):
@@ -171,7 +180,6 @@ class NASDifferentialEvolution:
             total_runtime = sum(float(gen['runtime']) for gen in best_architectures)
             total_runtime = "{:.2f}".format(total_runtime)
 
-        # Load existing accuracies data
         if os.path.exists('nas_t/accuracies.json'):
             with open('nas_t/accuracies.json', 'r') as f:
                 try:
@@ -181,22 +189,21 @@ class NASDifferentialEvolution:
         else:
             accuracies_data = {"run_id": 1, "generations": []}
 
-        # Append new accuracies data
+        # appends new accuracies data
         new_accuracies_data = [{"generation": i + 1, "accuracies": acc} for i, acc in enumerate(all_accuracies)]
         if isinstance(accuracies_data, list):
-            # Append data for the latest run
             accuracies_data.append({
                 "run_id": len(accuracies_data) + 1,
                 "generations": new_accuracies_data
             })
         else:
-            # Fallback in case data is not a list
+            # fallback in case data is not a list
             accuracies_data = [{
                 "run_id": 1,
                 "generations": new_accuracies_data
             }]
 
-        # Load existing model sizes data
+        # loads existing model sizes data
         if os.path.exists('nas_t/model_sizes.json'):
             with open('nas_t/model_sizes.json', 'r') as f:
                 try:
@@ -206,7 +213,7 @@ class NASDifferentialEvolution:
         else:
             model_sizes_data = {"run_id": 1, "generations": []}
 
-        # Append new model sizes data
+        # appends new model sizes data
         new_model_sizes_data = [{"generation": i + 1, "model_sizes": size} for i, size in enumerate(all_model_sizes)]
         if isinstance(model_sizes_data, list):
             model_sizes_data.append({
@@ -219,11 +226,11 @@ class NASDifferentialEvolution:
                 "generations": new_model_sizes_data
             }]
 
-        # Save updated accuracies data
+        # saves updated accuracies data
         with open('nas_t/accuracies.json', 'w') as f:
             json.dump(accuracies_data, f, indent=4)
 
-        # Save updated model sizes data
+        # saves updated model sizes data
         with open('nas_t/model_sizes.json', 'w') as f:
             json.dump(model_sizes_data, f, indent=4)
 

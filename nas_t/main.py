@@ -1,5 +1,4 @@
 import logging
-
 from evolutionary_algorithm import NASDifferentialEvolution
 import time
 

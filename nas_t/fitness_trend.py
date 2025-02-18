@@ -7,7 +7,7 @@ def plot_runtime_only(json_file):
         data = json.load(file)
 
     print("Data loaded from JSON file:")
-    print(data)  # Debug print
+    print(data)  # debug print
 
     all_runtime_trends = []
     max_generations = 0
@@ -21,7 +21,7 @@ def plot_runtime_only(json_file):
                 runtime_trend.append(float(generation["runtime"]))
             overall_runtime += float(generation.get("runtime", 0))
 
-        print(f"Runtime trend for run: {runtime_trend}")  # Debug print
+        print(f"Runtime trend for run: {runtime_trend}")  # debug print
         all_runtime_trends.append(runtime_trend)
         max_generations = max(max_generations, len(runtime_trend))
 
@@ -40,8 +40,8 @@ def plot_runtime_only(json_file):
 
     print(f"Overall Average Runtime: {overall_avg_runtime}")
 
-    # plot runtime trends
-    fig, ax = plt.subplots(figsize=(8, 6))  # Single plot for runtime only
+    # plots runtime trends
+    fig, ax = plt.subplots(figsize=(8, 6))
 
     # plots each run's runtime trend with a unique color
     colormap = plt.cm.get_cmap('tab10', len(all_runtime_trends))

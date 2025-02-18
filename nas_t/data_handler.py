@@ -22,7 +22,7 @@ X_train, X_validation, y_train, y_validation = train_test_split(X_analysis, y_an
 # n_repeats = 3     # number of repeats
 # rkf = RepeatedKFold(n_folds=n_folds, n_repeats=n_repeats, random_state=42)
 
-# scales data using StandardScaler
+# scales data using z-score normalization
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 X_validation = scaler.transform(X_validation)
