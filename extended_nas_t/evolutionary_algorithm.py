@@ -141,7 +141,7 @@ class NASDifferentialEvolution:
                     individual.evaluate(generation, self.generations)
 
             try:
-                best_individual = max(self.population, key=lambda ind: ind.fitness)
+                best_individual = max(self.population, key=lambda ind: ind.fitness if ind.fitness is not None else float('-inf'))
             except ValueError as e:
                 print(f"Error finding best individual in generation {generation}: {e}")
                 continue

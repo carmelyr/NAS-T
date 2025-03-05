@@ -29,6 +29,11 @@ class Genotype:
     def evaluate(self, generation, max_generations):
         phenotype = self.to_phenotype()
 
+        if not self.is_valid():
+            print(f"Skipping evaluation due to invalid architecture: {self.architecture}")
+            self.fitness = 0.0  # Ensure fitness is a float
+            return 0.0, 0.0, 0.0
+
         early_stop_callback = EarlyStopping(monitor='val_acc', patience=12, mode='max')
 
         trainer = pl.Trainer(min_epochs=20,                         # trains the model for at least 20 epochs
@@ -60,6 +65,13 @@ class Genotype:
         # clears GPU memory
         #torch.mps.empty_cache()
         return self.fitness, validation_accuracy, model_size
+    
+    def is_valid(self):
+        if len(self.architecture) < 2:  # Must have at least input + output
+            return False
+        if self.architecture[0]['layer'] not in ['Conv', 'Dense']:
+            return False  # First layer must be Conv or Dense
+        return True
 
     """
     - method that converts the genotype to a phenotype
@@ -111,13 +123,20 @@ class Phenotype(pl.LightningModule):
         out_dim_tracker = [(out_dim_1, out_dim_2)]
 
         for i, layer in enumerate(genotype):
+            print(f"Layer {i}: {layer['layer']} with input dimensions ({out_dim_1}, {out_dim_2})")
             if layer['layer'] == 'Conv':
+                if out_dim_2 - layer['kernel_size'] + 1 <= 0:
+                    print(f"Skipping Conv layer due to incompatible dimensions: {out_dim_2} - {layer['kernel_size']} + 1 <= 0")
+                    continue
                 layers.append(nn.Conv1d(out_dim_1, layer['filters'], kernel_size=layer['kernel_size']))
                 out_dim_1 = layer['filters']
                 out_dim_2 = out_dim_2 - layer['kernel_size'] + 1
                 layers.append(self.get_activation(layer['activation']))
 
             elif layer['layer'] == 'MaxPooling':
+                if out_dim_2 // layer['pool_size'] <= 0:
+                    print(f"Skipping MaxPooling layer due to incompatible dimensions: {out_dim_2} // {layer['pool_size']} <= 0")
+                    continue
                 layers.append(nn.MaxPool1d(kernel_size=layer['pool_size']))
                 out_dim_2 = out_dim_2 // layer['pool_size']
 
@@ -132,9 +151,45 @@ class Phenotype(pl.LightningModule):
 
             elif layer['layer'] == 'Dropout':
                 layers.append(nn.Dropout(layer['rate']))
+
+            elif layer['layer'] == 'LSTM':
+                if out_dim_2 != 1:  
+                    layers.append(nn.Flatten())
+                    out_dim_tracker.append((out_dim_1 * out_dim_2, 1))
+
+                if out_dim_1 != layer['hidden_units']:
+                    print(f"Skipping LSTM layer due to incompatible dimensions: expected {layer['hidden_units']}, got {out_dim_1}")
+                    continue
+                
+                lstm_layer = nn.LSTM(input_size=out_dim_1, hidden_size=layer['hidden_units'], batch_first=True)
+                layers.append(lstm_layer)
+                out_dim_1 = layer['hidden_units']
+                out_dim_2 = 1
+
+                # Convert shape for Conv1D
+                layers.append(nn.Lambda(lambda x: x.permute(0, 2, 1)))
+
+            elif layer['layer'] == 'GRU':
+                if out_dim_2 != 1:  
+                    layers.append(nn.Flatten())
+                    out_dim_tracker.append((out_dim_1 * out_dim_2, 1))
+
+                if out_dim_1 != layer['hidden_units']:
+                    print(f"Skipping GRU layer due to incompatible dimensions: expected {layer['hidden_units']}, got {out_dim_1}")
+                    continue
+                
+                gru_layer = nn.GRU(input_size=out_dim_1, hidden_size=layer['hidden_units'], batch_first=True)
+                layers.append(gru_layer)
+                out_dim_1 = layer['hidden_units']
+                out_dim_2 = 1
+
+                # Convert shape for Conv1D
+                layers.append(nn.Lambda(lambda x: x.permute(0, 2, 1)))
+
             else:
                 raise("Layer not implemented")
             out_dim_tracker.append((out_dim_1, out_dim_2))
+            print(f"Output dimensions after layer {i}: ({out_dim_1}, {out_dim_2})")
         if out_dim_2 != 1:
             layers.append(nn.Flatten())
             out_dim_tracker.append((out_dim_1*out_dim_2, 1))
@@ -186,11 +241,17 @@ class Phenotype(pl.LightningModule):
     """
     - method that defines how the data flows through the neural network
     - x: input data
-    - x.view: reshapes the input data to fit the neural network
     - returns the output of the neural network (transformed data)
     """
     def forward(self, x):
-        return self.model(x)
+        for layer in self.model:
+            if isinstance(layer, (nn.LSTM, nn.GRU)):
+                x, _ = layer(x)  # Use only the output
+                if len(x.shape) == 3:  
+                    x = x.permute(0, 2, 1)  # Permute to [batch, channels, sequence_length]
+            else:
+                x = layer(x)
+        return x
 
     """
     - method that defines the training step for the neural network
@@ -219,7 +280,16 @@ class Phenotype(pl.LightningModule):
     # utility method that implements the common processing step for making a prediction of the model
     def _common_step(self, batch, batch_idx):
         x, y = batch
-        x = x.reshape(x.size(0), 1, x.size(1))  # dim is batch size x channels x sequence length
+
+        # Check if x is wrongly shaped (e.g., [batch_size, 1201] instead of [batch_size, seq_length, input_size])
+        #print(f"Before reshaping: {x.shape}")  
+
+        # Correct the reshaping based on the expected model input
+        if len(x.shape) == 2:
+            x = x.view(x.size(0), 1, x.size(1))  # Change the last dimension to input size = 1
+
+        #print(f"After reshaping: {x.shape}")  # Check again
+
         logits = self.forward(x)                # passes the input data through the neural network (predictions)
 
         loss = self.loss_fn(logits, y)          # calculates the loss between the predictions and the target data
