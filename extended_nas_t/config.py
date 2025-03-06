@@ -10,7 +10,7 @@ alpha = 0.0001          # size penalty
 BETA = 0.00001          # time penalty
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #device = 'mps'          # device to run the model on (mps: multi-processing server, cuda: GPU, cpu: CPU)
-n = 7                   # number of layers in the neural network
+n = 6                   # number of layers in the neural network
 
 # ---- Defines the random architecture for the neural network based on the values mentioned in the scientific paper ---- #
 """
@@ -40,27 +40,41 @@ def random_architecture():
 
     selected_layers = []
     only_linear = False
+    is_flattened = False
+    conv_added = False
 
     first_layer = random.choice([layer_options[0], layer_options[3]])  # Conv or Dense
     selected_layers.append(first_layer)
+    if first_layer['layer'] == 'Dense':
+        is_flattened = True
+    if first_layer['layer'] == 'Conv':
+        conv_added = True
 
     for i in range(n-1):
         random_number = random.random()
 
+        if is_flattened and random_number < 0.2:
+            # Instead of adding a recurrent layer, add a ZeroOp or Dropout
+            selected_layers.append(layer_options[1])  # ZeroOp
+            continue
+
         # Prevent RNN layers before Conv layers
         if len(selected_layers) > 0 and selected_layers[-1]['layer'] in ['LSTM', 'GRU']:
-            random_number += 0.3  # Reduce chance of LSTM/GRU appearing in a row
+            random_number += 0.2  # Reduce chance of LSTM/GRU appearing in a row
 
         if random_number < 0.5 and not only_linear:     # select Convolutional block
             selected_layers.append(layer_options[0])    # conv
             selected_layers.append(layer_options[2])    # max pooling
+            conv_added = True
         elif random_number < 0.6:
             selected_layers.append(layer_options[4])    # dropout
-        elif random_number < 0.7:
+        elif random_number < 0.75 and not is_flattened:
             selected_layers.append(layer_options[5])    # LSTM
-        elif random_number < 0.8:
+            is_flattened = True  # Ensure it doesn't get another Conv layer after LSTM
+        elif random_number < 0.85 and not is_flattened:
             selected_layers.append(layer_options[6])    # GRU
-        elif random_number < 0.9 and only_linear:
+            is_flattened = True  # Ensure it doesn't get another Conv layer after GRU
+        elif random_number < 0.8 and only_linear:
             selected_layers.append(layer_options[3])    # dense
             only_linear = True
         else:

@@ -8,6 +8,21 @@ from utils import fitness_function
 from data_handler import train_loader, validation_loader, X_train_tensor
 from config import random_architecture
 
+class PermuteLayer(nn.Module):
+    def __init__(self, *dims):
+        super(PermuteLayer, self).__init__()
+        self.dims = dims
+
+    def forward(self, x):
+        return x.permute(*self.dims)
+    
+class Ensure3D(nn.Module):
+    def forward(self, x):
+        # If x is 2D, assume shape is (batch, features) and add a channel dimension.
+        if x.dim() == 2:
+            return x.unsqueeze(1)  # now shape becomes (batch, 1, features)
+        return x
+
 # ---- Genotype class ---- #
 # Stores and manipulates the architecture of the neural network
 class Genotype:
@@ -67,11 +82,39 @@ class Genotype:
         return self.fitness, validation_accuracy, model_size
     
     def is_valid(self):
-        if len(self.architecture) < 2:  # Must have at least input + output
-            return False
+        if len(self.architecture) < 2:  
+            return False  # Must have at least input + output layers
+        
         if self.architecture[0]['layer'] not in ['Conv', 'Dense']:
             return False  # First layer must be Conv or Dense
-        return True
+
+        out_dim_1 = 1
+        out_dim_2 = X_train_tensor.size(1)  # Input sequence length
+
+        for layer in self.architecture:
+            if layer['layer'] == 'Conv':
+                if out_dim_2 - layer['kernel_size'] + 1 <= 0:
+                    return False  # Conv layer reducing sequence length to <= 0
+                out_dim_1 = layer['filters']
+                out_dim_2 = out_dim_2 - layer['kernel_size'] + 1
+
+            elif layer['layer'] == 'MaxPooling':
+                if out_dim_2 // layer['pool_size'] <= 0:
+                    return False  # MaxPooling layer making sequence length zero
+                out_dim_2 = out_dim_2 // layer['pool_size']
+
+            elif layer['layer'] == 'LSTM' or layer['layer'] == 'GRU':
+                if out_dim_2 < 2:
+                    return False  # RNN needs at least 2 time steps
+                out_dim_1 = layer['hidden_units']  # Updates feature size
+
+            elif layer['layer'] == 'Dense':
+                if out_dim_2 != 1:  # If not already flattened, do it
+                    out_dim_2 = 1
+                out_dim_1 = layer['units']
+
+        return out_dim_1 * out_dim_2 > 0  # Ensure the final size is valid
+
 
     """
     - method that converts the genotype to a phenotype
@@ -153,41 +196,27 @@ class Phenotype(pl.LightningModule):
                 layers.append(nn.Dropout(layer['rate']))
 
             elif layer['layer'] == 'LSTM':
-                if out_dim_2 != 1:  
-                    layers.append(nn.Flatten())
-                    out_dim_tracker.append((out_dim_1 * out_dim_2, 1))
-
-                if out_dim_1 != layer['hidden_units']:
-                    print(f"Skipping LSTM layer due to incompatible dimensions: expected {layer['hidden_units']}, got {out_dim_1}")
-                    continue
-                
+                # If input feature size is 1, upsample before LSTM
+                if out_dim_1 == 1:
+                    new_size = layer['hidden_units']
+                    layers.append(nn.Conv1d(in_channels=1, out_channels=new_size, kernel_size=1))
+                    out_dim_1 = new_size
                 lstm_layer = nn.LSTM(input_size=out_dim_1, hidden_size=layer['hidden_units'], batch_first=True)
                 layers.append(lstm_layer)
                 out_dim_1 = layer['hidden_units']
-                out_dim_2 = 1
-
-                # Convert shape for Conv1D
-                layers.append(nn.Lambda(lambda x: x.permute(0, 2, 1)))
 
             elif layer['layer'] == 'GRU':
-                if out_dim_2 != 1:  
-                    layers.append(nn.Flatten())
-                    out_dim_tracker.append((out_dim_1 * out_dim_2, 1))
-
-                if out_dim_1 != layer['hidden_units']:
-                    print(f"Skipping GRU layer due to incompatible dimensions: expected {layer['hidden_units']}, got {out_dim_1}")
-                    continue
-                
+                # If input feature size is 1, upsample before GRU
+                if out_dim_1 == 1:
+                    new_size = layer['hidden_units']
+                    layers.append(nn.Conv1d(in_channels=1, out_channels=new_size, kernel_size=1))
+                    out_dim_1 = new_size
                 gru_layer = nn.GRU(input_size=out_dim_1, hidden_size=layer['hidden_units'], batch_first=True)
                 layers.append(gru_layer)
                 out_dim_1 = layer['hidden_units']
-                out_dim_2 = 1
-
-                # Convert shape for Conv1D
-                layers.append(nn.Lambda(lambda x: x.permute(0, 2, 1)))
 
             else:
-                raise("Layer not implemented")
+                raise ValueError("Layer not implemented")
             out_dim_tracker.append((out_dim_1, out_dim_2))
             print(f"Output dimensions after layer {i}: ({out_dim_1}, {out_dim_2})")
         if out_dim_2 != 1:
@@ -203,7 +232,6 @@ class Phenotype(pl.LightningModule):
         layers.append(nn.Softmax(dim=1))
 
         return nn.Sequential(*layers)
-
     def get_activation(self, activation):
         """
         Returns the activation function corresponding to the given name.
@@ -246,12 +274,16 @@ class Phenotype(pl.LightningModule):
     def forward(self, x):
         for layer in self.model:
             if isinstance(layer, (nn.LSTM, nn.GRU)):
-                x, _ = layer(x)  # Use only the output
-                if len(x.shape) == 3:  
-                    x = x.permute(0, 2, 1)  # Permute to [batch, channels, sequence_length]
+                # Ensure the correct shape: (batch, seq_length, features)
+                if len(x.shape) == 2:
+                    x = x.unsqueeze(1)
+                x = x.permute(0, 2, 1)  # Convert to (batch, seq_length, features)
+                x, _ = layer(x)  # Apply RNN
+                x = x.permute(0, 2, 1)  # Convert back to (batch, features, seq_length)
             else:
                 x = layer(x)
         return x
+
 
     """
     - method that defines the training step for the neural network
