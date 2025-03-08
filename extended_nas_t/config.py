@@ -10,7 +10,7 @@ alpha = 0.0001          # size penalty
 BETA = 0.00001          # time penalty
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #device = 'mps'          # device to run the model on (mps: multi-processing server, cuda: GPU, cpu: CPU)
-n = 6                   # number of layers in the neural network
+n = 7                   # number of layers in the neural network
 
 # ---- Defines the random architecture for the neural network based on the values mentioned in the scientific paper ---- #
 """
@@ -35,57 +35,51 @@ def random_architecture():
          'activation': ['relu', 'elu', 'selu', 'sigmoid', 'linear']},
         {'layer': 'Dropout', 'rate': (0.1, 0.5)},
         {'layer': 'LSTM', 'hidden_units': [16, 32, 64, 128]},
-        {'layer': 'GRU', 'hidden_units': [16, 32, 64, 128]}
+        {'layer': 'GRU', 'hidden_units': [16, 32, 64, 128]},
+        {'layer': 'Ensure3D'}  # Add Ensure3D layer option
     ]
 
     selected_layers = []
     only_linear = False
     is_flattened = False
-    conv_added = False
 
     first_layer = random.choice([layer_options[0], layer_options[3]])  # Conv or Dense
     selected_layers.append(first_layer)
     if first_layer['layer'] == 'Dense':
         is_flattened = True
-    if first_layer['layer'] == 'Conv':
-        conv_added = True
 
     for i in range(n-1):
         random_number = random.random()
 
-        if is_flattened and random_number < 0.2:
-            # Instead of adding a recurrent layer, add a ZeroOp or Dropout
-            selected_layers.append(layer_options[1])  # ZeroOp
-            continue
+        # prevents RNN layers before Conv layers
+        #if len(selected_layers) > 0 and selected_layers[-1]['layer'] in ['LSTM', 'GRU']:
+        #    random_number += 0.1
 
-        # Prevent RNN layers before Conv layers
-        if len(selected_layers) > 0 and selected_layers[-1]['layer'] in ['LSTM', 'GRU']:
-            random_number += 0.2  # Reduce chance of LSTM/GRU appearing in a row
-
-        if random_number < 0.5 and not only_linear:     # select Convolutional block
+        if random_number < 0.3 and not only_linear:
             selected_layers.append(layer_options[0])    # conv
             selected_layers.append(layer_options[2])    # max pooling
-            conv_added = True
-        elif random_number < 0.6:
+        elif random_number < 0.4:
             selected_layers.append(layer_options[4])    # dropout
-        elif random_number < 0.75 and not is_flattened:
+        elif random_number < 0.55 and not is_flattened:
             selected_layers.append(layer_options[5])    # LSTM
-            is_flattened = True  # Ensure it doesn't get another Conv layer after LSTM
-        elif random_number < 0.85 and not is_flattened:
+            is_flattened = True
+        elif random_number < 0.65 and not is_flattened:
             selected_layers.append(layer_options[6])    # GRU
-            is_flattened = True  # Ensure it doesn't get another Conv layer after GRU
-        elif random_number < 0.8 and only_linear:
+            is_flattened = True
+        elif random_number < 0.85:
             selected_layers.append(layer_options[3])    # dense
             only_linear = True
         else:
             selected_layers.append(layer_options[1])    # zeroop
 
-    # Ensure valid transitions from LSTM/GRU to Conv
-    #if any(layer['layer'] in ['LSTM', 'GRU'] for layer in selected_layers):
-    #    if any(layer['layer'] == 'Conv' for layer in selected_layers):
-    #        print("Skipping invalid architecture with LSTM/GRU before Conv")
-    #        return random_architecture()  # Regenerate a valid architecture
-    
+    # ensures valid transitions from Dense to Conv and MaxPooling
+    if any(layer['layer'] == 'Dense' for layer in selected_layers):
+        for i, layer in enumerate(selected_layers):
+            if layer['layer'] == 'Dense' and i < len(selected_layers) - 1:
+                next_layer = selected_layers[i + 1]
+                if next_layer['layer'] in ['Conv', 'MaxPooling']:
+                    selected_layers.insert(i + 1, {'layer': 'Ensure3D'})
+
     # makes sure that the architecture has exactly n layers; takes the first n layers (slicing)
     selected_layers = selected_layers[:n]
 
@@ -109,6 +103,8 @@ def random_architecture():
             layer_config['hidden_units'] = random.choice(layer['hidden_units'])
         elif layer['layer'] == 'GRU':
             layer_config['hidden_units'] = random.choice(layer['hidden_units'])
+        elif layer['layer'] == 'Ensure3D':
+            pass  # No additional configuration needed for Ensure3D
         else:
             print(f"Invalid layer configuration: {layer}")
         layer_config['layer'] = layer['layer']

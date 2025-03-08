@@ -8,6 +8,13 @@ from utils import fitness_function
 from data_handler import train_loader, validation_loader, X_train_tensor
 from config import random_architecture
 
+# ---- Layer classes ---- #
+"""
+- this class changes the order of the dimensions of the input tensor
+- inherits from the PyTorch Module class
+- nn.Module: base class for all neural network modules
+- PermuteLayer: subclass of nn.Module that permutes the dimensions of the input tensor
+"""
 class PermuteLayer(nn.Module):
     def __init__(self, *dims):
         super(PermuteLayer, self).__init__()
@@ -16,15 +23,23 @@ class PermuteLayer(nn.Module):
     def forward(self, x):
         return x.permute(*self.dims)
     
+# ---- Ensure3D class ---- #
+"""
+- this class ensures that the input tensor is 3D
+- inherits from the PyTorch Module class
+- nn.Module: base class for all neural network modules
+- Ensure3D: subclass of nn.Module that ensures the input tensor is 3D
+"""
 class Ensure3D(nn.Module):
     def forward(self, x):
-        # If x is 2D, assume shape is (batch, features) and add a channel dimension.
+        # if x is 2D, then assumed shape is (batch, features)
+        # add a channel dimension to make it 3D
         if x.dim() == 2:
-            return x.unsqueeze(1)  # now shape becomes (batch, 1, features)
+            return x.unsqueeze(1)          # new shape is (batch, 1, features)
         return x
 
 # ---- Genotype class ---- #
-# Stores and manipulates the architecture of the neural network
+# stores and manipulates the architecture of the neural network
 class Genotype:
     """
     - constructor for the Genotype class
@@ -44,12 +59,14 @@ class Genotype:
     def evaluate(self, generation, max_generations):
         phenotype = self.to_phenotype()
 
+        # if the architecture is invalid, skip evaluation
+        # invalid fintesses are set to 0
         if not self.is_valid():
-            print(f"Skipping evaluation due to invalid architecture: {self.architecture}")
-            self.fitness = 0.0  # Ensure fitness is a float
+            print(f"\n Skipping evaluation due to invalid architecture: {self.architecture} \n")
+            self.fitness = 0.0
             return 0.0, 0.0, 0.0
 
-        early_stop_callback = EarlyStopping(monitor='val_acc', patience=12, mode='max')
+        early_stop_callback = EarlyStopping(monitor='val_acc', patience=30, mode='max')
 
         trainer = pl.Trainer(min_epochs=20,                         # trains the model for at least 20 epochs
                              max_epochs=200,                        # trains the model for maximum 200 epochs
@@ -81,39 +98,48 @@ class Genotype:
         #torch.mps.empty_cache()
         return self.fitness, validation_accuracy, model_size
     
+    """
+    - this method checks if the architecture is valid
+    - returns True if the architecture is valid, otherwise False
+    """
     def is_valid(self):
+        # if the architecture has less than 2 layers, it is invalid
         if len(self.architecture) < 2:  
-            return False  # Must have at least input + output layers
+            return False
         
-        if self.architecture[0]['layer'] not in ['Conv', 'Dense']:
-            return False  # First layer must be Conv or Dense
+        # if the first layer is not Conv or Dense, it is invalid
+        #if self.architecture[0]['layer'] not in ['Conv', 'Dense']:
+        #    return False
 
         out_dim_1 = 1
-        out_dim_2 = X_train_tensor.size(1)  # Input sequence length
+        out_dim_2 = X_train_tensor.size(1)
+
 
         for layer in self.architecture:
             if layer['layer'] == 'Conv':
                 if out_dim_2 - layer['kernel_size'] + 1 <= 0:
-                    return False  # Conv layer reducing sequence length to <= 0
+                    return False
                 out_dim_1 = layer['filters']
                 out_dim_2 = out_dim_2 - layer['kernel_size'] + 1
 
             elif layer['layer'] == 'MaxPooling':
                 if out_dim_2 // layer['pool_size'] <= 0:
-                    return False  # MaxPooling layer making sequence length zero
+                    return False
                 out_dim_2 = out_dim_2 // layer['pool_size']
 
             elif layer['layer'] == 'LSTM' or layer['layer'] == 'GRU':
+                # if the second dimension is less than 2, the architecture is invalid
                 if out_dim_2 < 2:
-                    return False  # RNN needs at least 2 time steps
-                out_dim_1 = layer['hidden_units']  # Updates feature size
+                    return False
+                out_dim_1 = layer['hidden_units']
 
             elif layer['layer'] == 'Dense':
-                if out_dim_2 != 1:  # If not already flattened, do it
+                # Dense layers expect 1D input
+                if out_dim_2 != 1:
                     out_dim_2 = 1
                 out_dim_1 = layer['units']
 
-        return out_dim_1 * out_dim_2 > 0  # Ensure the final size is valid
+        return out_dim_1 * out_dim_2 > 0
 
 
     """
@@ -196,7 +222,7 @@ class Phenotype(pl.LightningModule):
                 layers.append(nn.Dropout(layer['rate']))
 
             elif layer['layer'] == 'LSTM':
-                # If input feature size is 1, upsample before LSTM
+                # if input feature size is 1, upsample before LSTM
                 if out_dim_1 == 1:
                     new_size = layer['hidden_units']
                     layers.append(nn.Conv1d(in_channels=1, out_channels=new_size, kernel_size=1))
@@ -206,7 +232,7 @@ class Phenotype(pl.LightningModule):
                 out_dim_1 = layer['hidden_units']
 
             elif layer['layer'] == 'GRU':
-                # If input feature size is 1, upsample before GRU
+                # if input feature size is 1, upsample before GRU
                 if out_dim_1 == 1:
                     new_size = layer['hidden_units']
                     layers.append(nn.Conv1d(in_channels=1, out_channels=new_size, kernel_size=1))
@@ -215,23 +241,36 @@ class Phenotype(pl.LightningModule):
                 layers.append(gru_layer)
                 out_dim_1 = layer['hidden_units']
 
+            elif layer['layer'] == 'Ensure3D':
+                layers.append(Ensure3D())
+
             else:
                 raise ValueError("Layer not implemented")
+            
             out_dim_tracker.append((out_dim_1, out_dim_2))
+
             print(f"Output dimensions after layer {i}: ({out_dim_1}, {out_dim_2})")
+
         if out_dim_2 != 1:
             layers.append(nn.Flatten())
             out_dim_tracker.append((out_dim_1*out_dim_2, 1))
+
         if out_dim_1*out_dim_2 < 1:
             print(f"error: cannot be dimension {out_dim_1*out_dim_2} ({out_dim_1} x {out_dim_2})")
             print(layers)
             print(f"inputs dim 2: {X_train_tensor.size(1)}")
             print(out_dim_tracker)
             exit(32)
+
         layers.append(nn.Linear(out_dim_1*out_dim_2, 2))
         layers.append(nn.Softmax(dim=1))
 
         return nn.Sequential(*layers)
+    
+    """
+    - this method returns the activation function corresponding to the given name
+    - activation: name of the activation function
+    """
     def get_activation(self, activation):
         """
         Returns the activation function corresponding to the given name.
@@ -274,14 +313,14 @@ class Phenotype(pl.LightningModule):
     def forward(self, x):
         for layer in self.model:
             if isinstance(layer, (nn.LSTM, nn.GRU)):
-                # Ensure the correct shape: (batch, seq_length, features)
+                # ensures the correct shape: (batch, seq_length, features)
                 if len(x.shape) == 2:
-                    x = x.unsqueeze(1)
-                x = x.permute(0, 2, 1)  # Convert to (batch, seq_length, features)
-                x, _ = layer(x)  # Apply RNN
-                x = x.permute(0, 2, 1)  # Convert back to (batch, features, seq_length)
+                    x = x.unsqueeze(1)          # new shape is (batch, 1, features)
+                x = x.permute(0, 2, 1)          # converts to (batch, seq_length, features)
+                x, _ = layer(x)                 # applies RNN
+                x = x.permute(0, 2, 1)          # converts back to (batch, features, seq_length)
             else:
-                x = layer(x)
+                x = layer(x)                    # otherwise, applies the layer
         return x
 
 
@@ -313,20 +352,20 @@ class Phenotype(pl.LightningModule):
     def _common_step(self, batch, batch_idx):
         x, y = batch
 
-        # Check if x is wrongly shaped (e.g., [batch_size, 1201] instead of [batch_size, seq_length, input_size])
+        # checks if x is wrongly shaped (e.g., [batch_size, 1201] instead of [batch_size, seq_length, input_size])
         #print(f"Before reshaping: {x.shape}")  
 
-        # Correct the reshaping based on the expected model input
+        # corrects the reshaping based on the expected model input
         if len(x.shape) == 2:
-            x = x.view(x.size(0), 1, x.size(1))  # Change the last dimension to input size = 1
+            x = x.view(x.size(0), 1, x.size(1))     # changes the last dimension to input size = 1
 
-        #print(f"After reshaping: {x.shape}")  # Check again
+        #print(f"After reshaping: {x.shape}")
 
-        logits = self.forward(x)                # passes the input data through the neural network (predictions)
+        logits = self.forward(x)                    # passes the input data through the neural network (predictions)
 
-        loss = self.loss_fn(logits, y)          # calculates the loss between the predictions and the target data
-        preds = logits.argmax(dim=1)            # returns the index of the maximum value in the predictions
-        acc = self.accuracy(preds, y)           # uses torchmetrics.Accuracy to calculate accuracy
+        loss = self.loss_fn(logits, y)              # calculates the loss between the predictions and the target data
+        preds = logits.argmax(dim=1)                # returns the index of the maximum value in the predictions
+        acc = self.accuracy(preds, y)               # uses torchmetrics.Accuracy to calculate accuracy
 
         return loss, preds, acc
 
