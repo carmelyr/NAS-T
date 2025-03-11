@@ -134,7 +134,7 @@ class Genotype:
                 out_dim_1 = layer['hidden_units']
 
             elif layer['layer'] == 'Dense':
-                # Dense layers expect 1D input
+                # expected 1D input
                 if out_dim_2 != 1:
                     out_dim_2 = 1
                 out_dim_1 = layer['units']

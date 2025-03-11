@@ -10,11 +10,11 @@ spec:
       resources:
         requests:
           cpu: 1
-          nvidia.com/gpu: 1
+          nvidia.com/gpu: 0
           memory: 10Gi
         limits:
           cpu: 1
-          nvidia.com/gpu: 1
+          nvidia.com/gpu: 0
           memory: 10Gi
       volumeMounts:
         - mountPath: /abyss/home
