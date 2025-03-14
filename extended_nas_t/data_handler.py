@@ -14,30 +14,29 @@ y_test = pd.read_csv('classification_ozone/y_test.csv')
 X_analysis.fillna(X_analysis.mean(), inplace=True)
 X_test.fillna(X_test.mean(), inplace=True)
 
-# splits the data into training and validation sets
-X_train, X_validation, y_train, y_validation = train_test_split(X_analysis, y_analysis, test_size=0.2, random_state=42)
-
-# ---- Parameters for repeated k-fold cross-validation ---- #
-# n_folds = 5       # number of folds
-# n_repeats = 3     # number of repeats
-# rkf = RepeatedKFold(n_folds=n_folds, n_repeats=n_repeats, random_state=42)
-
 # scales data using z-score normalization
 scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_validation = scaler.transform(X_validation)
+X_analysis = scaler.fit_transform(X_analysis)
 X_test = scaler.transform(X_test)
 
-# converts data to PyTorch tensors
-X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-y_train_tensor = torch.tensor(y_train.to_numpy().flatten(), dtype=torch.long)               # flatten the y_train array
-X_validation_tensor = torch.tensor(X_validation, dtype=torch.float32)
-y_validation_tensor = torch.tensor(y_validation.to_numpy().flatten(), dtype=torch.long)     # flatten the y_validation array
+y_analysis = y_analysis.to_numpy().flatten()
+y_test = y_test.to_numpy().flatten()
 
-# creates PyTorch datasets and data loaders
-# DataLoader: Handles batching, shuffling, and parallel data loading during training
-# TensorDataset: Dataset wrapping tensors, each sample will be retrieved by indexing tensors along the first dimension
-train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-validation_dataset = TensorDataset(X_validation_tensor, y_validation_tensor)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0)
-validation_loader = DataLoader(validation_dataset, batch_size=32, shuffle=False, num_workers=0)
+# Prepare datasets for cross-validation
+rkf = RepeatedKFold(n_splits=5, n_repeats=3, random_state=42)
+def get_data_splits():
+    for train_idx, val_idx in rkf.split(X_analysis):
+        X_train, X_validation = X_analysis[train_idx], X_analysis[val_idx]
+        y_train, y_validation = y_analysis[train_idx], y_analysis[val_idx]
+        
+        X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+        y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+        X_validation_tensor = torch.tensor(X_validation, dtype=torch.float32)
+        y_validation_tensor = torch.tensor(y_validation, dtype=torch.long)
+        
+        train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+        validation_dataset = TensorDataset(X_validation_tensor, y_validation_tensor)
+        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0)
+        validation_loader = DataLoader(validation_dataset, batch_size=32, shuffle=False, num_workers=0)
+        
+        yield train_loader, validation_loader

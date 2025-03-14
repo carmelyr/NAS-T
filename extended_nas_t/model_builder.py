@@ -1,407 +1,220 @@
 import torch
-import torch.nn as nn                                                           # neural network module
+import torch.nn as nn
 import pytorch_lightning as pl
-import torch.optim as optim                                                     # optimization algorithms
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+import torch.optim as optim
 import torchmetrics
-from utils import fitness_function
-from data_handler import train_loader, validation_loader, X_train_tensor
-from config import random_architecture
 
-# ---- Layer classes ---- #
-"""
-- this class changes the order of the dimensions of the input tensor
-- inherits from the PyTorch Module class
-- nn.Module: base class for all neural network modules
-- PermuteLayer: subclass of nn.Module that permutes the dimensions of the input tensor
-"""
-class PermuteLayer(nn.Module):
-    def __init__(self, *dims):
-        super(PermuteLayer, self).__init__()
-        self.dims = dims
+def build_model(model_type, **kwargs):
+    print(f"Building model type: {model_type}")  # Debugging statement
+    input_size = kwargs.get("input_size", 1)
+
+    if model_type == "FCNN":
+        return FCNN(input_size=input_size, hidden_units=kwargs.get("hidden_units", 64), output_size=2)
+
+    elif model_type == "CNN":
+        return CNN(input_channels=kwargs.get("input_channels", 1),
+                   num_filters=kwargs.get("num_filters", 32),
+                   kernel_size=kwargs.get("kernel_size", 3),
+                   output_size=2)
+
+    elif model_type == "LSTM":
+        return LSTM(input_size=input_size, hidden_units=kwargs["hidden_units"], output_size=2)
+
+    elif model_type == "GRU":
+        return GRU(input_size=input_size, hidden_units=kwargs["hidden_units"], output_size=2)
+
+    # Transformer is disabled
+    elif model_type == "Transformer":
+        return TransformerModel(input_dim=input_size, num_heads=kwargs.get("num_heads", 8), num_layers=kwargs.get("num_layers", 2), output_size=2)
+
+    else:
+        raise ValueError(f"Invalid model type: {model_type}")
+
+
+# Fully Connected Neural Network (FCNN)
+class FCNN(pl.LightningModule):
+    def __init__(self, input_size, hidden_units, output_size=2):
+        super().__init__()
+        self.fc1 = nn.Linear(input_size, hidden_units)
+        self.fc2 = nn.Linear(hidden_units, output_size)
+        self.relu = nn.ReLU()
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.accuracy = torchmetrics.Accuracy(task='binary', num_classes=2)
 
     def forward(self, x):
-        return x.permute(*self.dims)
-    
-# ---- Ensure3D class ---- #
-"""
-- this class ensures that the input tensor is 3D
-- inherits from the PyTorch Module class
-- nn.Module: base class for all neural network modules
-- Ensure3D: subclass of nn.Module that ensures the input tensor is 3D
-"""
-class Ensure3D(nn.Module):
-    def forward(self, x):
-        # if x is 2D, then assumed shape is (batch, features)
-        # add a channel dimension to make it 3D
-        if x.dim() == 2:
-            return x.unsqueeze(1)          # new shape is (batch, 1, features)
-        return x
+        x = self.relu(self.fc1(x))
+        return self.fc2(x)
 
-# ---- Genotype class ---- #
-# stores and manipulates the architecture of the neural network
-class Genotype:
-    """
-    - constructor for the Genotype class
-    - called when a new instance of the class is created
-    - self.config: stores the same architecture of the genotype as defined in self.architecture
-    - self.fitness: stores the fitness value of the genotype
-    """
-    def __init__(self, architecture=None, device='cpu'):
-        self.architecture = random_architecture() if architecture is None else architecture
-        self.config = self.architecture
-        self.device = device
-        self.fitness = None
-
-    """
-    - method that calculates the fitness score of the architecture based on its performance
-    """
-    def evaluate(self, generation, max_generations):
-        phenotype = self.to_phenotype()
-
-        # if the architecture is invalid, skip evaluation
-        # invalid fintesses are set to 0
-        if not self.is_valid():
-            print(f"\n Skipping evaluation due to invalid architecture: {self.architecture} \n")
-            self.fitness = 0.0
-            return 0.0, 0.0, 0.0
-
-        early_stop_callback = EarlyStopping(monitor='val_acc', patience=30, mode='max')
-
-        trainer = pl.Trainer(min_epochs=20,                         # trains the model for at least 20 epochs
-                             max_epochs=200,                        # trains the model for maximum 200 epochs
-                             logger=False,
-                             accelerator='gpu',                     # uses CPU for training
-                             enable_checkpointing=False,
-                             enable_progress_bar=False,
-                             precision=16,                          # 16-bit precision for faster training
-                             callbacks=[early_stop_callback],       # stops training when the validation accuracy does not improve for 15 epochs
-                             gradient_clip_val=0.5,                 # prevent exploding gradients
-                             gradient_clip_algorithm='norm')        # normalizes the gradient to prevent exploding gradients
-        
-        # trainer.fit: trains the model
-        trainer.fit(phenotype, train_dataloaders=train_loader, val_dataloaders=validation_loader)
-
-        # trainer.validate: evaluates the model on the validation set
-        trainer.validate(phenotype, dataloaders=validation_loader)
-
-        # trainer.callback_metrics.get('val_acc', torch.tensor(0.0)): gets the validation accuracy from the trainer
-        validation_accuracy = trainer.callback_metrics.get('val_acc', torch.tensor(0.0)).item()
-        model_size = phenotype.get_number_parameter()
-
-        self.fitness = fitness_function(self.architecture, validation_accuracy)
-
-        # move the phenotype to CPU to free up GPU memory
-        phenotype.to(self.device)
-
-        # clears GPU memory
-        #torch.mps.empty_cache()
-        return self.fitness, validation_accuracy, model_size
-    
-    """
-    - this method checks if the architecture is valid
-    - returns True if the architecture is valid, otherwise False
-    """
-    def is_valid(self):
-        # if the architecture has less than 2 layers, it is invalid
-        if len(self.architecture) < 2:  
-            return False
-        
-        # if the first layer is not Conv or Dense, it is invalid
-        #if self.architecture[0]['layer'] not in ['Conv', 'Dense']:
-        #    return False
-
-        out_dim_1 = 1
-        out_dim_2 = X_train_tensor.size(1)
-
-
-        for layer in self.architecture:
-            if layer['layer'] == 'Conv':
-                if out_dim_2 - layer['kernel_size'] + 1 <= 0:
-                    return False
-                out_dim_1 = layer['filters']
-                out_dim_2 = out_dim_2 - layer['kernel_size'] + 1
-
-            elif layer['layer'] == 'MaxPooling':
-                if out_dim_2 // layer['pool_size'] <= 0:
-                    return False
-                out_dim_2 = out_dim_2 // layer['pool_size']
-
-            elif layer['layer'] == 'LSTM' or layer['layer'] == 'GRU':
-                # if the second dimension is less than 2, the architecture is invalid
-                if out_dim_2 < 2:
-                    return False
-                out_dim_1 = layer['hidden_units']
-
-            elif layer['layer'] == 'Dense':
-                # expected 1D input
-                if out_dim_2 != 1:
-                    out_dim_2 = 1
-                out_dim_1 = layer['units']
-
-        return out_dim_1 * out_dim_2 > 0
-
-
-    """
-    - method that converts the genotype to a phenotype
-    """
-    def to_phenotype(self):
-        return Phenotype(self.architecture)
-
-# ---- Phenotype class ---- #
-"""
-- defines the neural network model based on the genotype
-- inherits from the PyTorch Lightning Module class
-- pl.LightningModule: provides a simple interface for organizing PyTorch code; superclass
-- Phenotype: subclass of pl.LightningModule that inherits its properties and methods
-"""
-class Phenotype(pl.LightningModule):
-    """
-    - constructor for the Phenotype class
-    - initializes the class with the genotype and the loss function
-    - initializes the accuracy metric using torchmetrics.Accuracy
-    """
-    def __init__(self, genotype=None):
-        super(Phenotype, self).__init__()
-        if (genotype):
-            self.genotype = genotype
-            self.model = self.build_model_from_genotype(genotype)               # builds the neural network model based on the genotype
-        self.loss_fn = nn.CrossEntropyLoss()                                    # calculates the loss between the predictions and the target data
-        self.accuracy = torchmetrics.Accuracy(task='binary', num_classes=2)     # calculates the accuracy of the model
-        print(f"Number of trainable parameters: {self.get_number_parameter()}")
-
-    """
-    - method that returns the number of trainable parameters in the neural network model
-    """
-    def get_number_parameter(self):
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
-    """
-    - method that builds the neural network model based on the genotype
-    - variable layers: stores the layers of the neural network
-    - variable input_channels: stores the number of input channels
-    - variable output_size: stores the size of the output
-    - for each layer in the genotype, the corresponding layer is added to the neural network
-    - returns the neural network model
-    """
-    def build_model_from_genotype(self, genotype):
-        layers = []
-        out_dim_1 = 1
-        out_dim_2 = X_train_tensor.size(1)  # number of time steps in the input data
-
-        out_dim_tracker = [(out_dim_1, out_dim_2)]
-
-        for i, layer in enumerate(genotype):
-            print(f"Layer {i}: {layer['layer']} with input dimensions ({out_dim_1}, {out_dim_2})")
-            if layer['layer'] == 'Conv':
-                if out_dim_2 - layer['kernel_size'] + 1 <= 0:
-                    print(f"Skipping Conv layer due to incompatible dimensions: {out_dim_2} - {layer['kernel_size']} + 1 <= 0")
-                    continue
-                layers.append(nn.Conv1d(out_dim_1, layer['filters'], kernel_size=layer['kernel_size']))
-                out_dim_1 = layer['filters']
-                out_dim_2 = out_dim_2 - layer['kernel_size'] + 1
-                layers.append(self.get_activation(layer['activation']))
-
-            elif layer['layer'] == 'MaxPooling':
-                if out_dim_2 // layer['pool_size'] <= 0:
-                    print(f"Skipping MaxPooling layer due to incompatible dimensions: {out_dim_2} // {layer['pool_size']} <= 0")
-                    continue
-                layers.append(nn.MaxPool1d(kernel_size=layer['pool_size']))
-                out_dim_2 = out_dim_2 // layer['pool_size']
-
-            elif layer['layer'] == 'Dense':
-                if out_dim_2 != 1:                  # otherwise already flattened
-                    layers.append(nn.Flatten())
-                    out_dim_tracker.append((out_dim_1 * out_dim_2, 1))
-                layers.append(nn.Linear(out_dim_1 * out_dim_2, layer['units']))
-                out_dim_1 = layer['units']
-                out_dim_2 = 1
-                layers.append(self.get_activation(layer['activation']))
-
-            elif layer['layer'] == 'Dropout':
-                layers.append(nn.Dropout(layer['rate']))
-
-            elif layer['layer'] == 'LSTM':
-                # if input feature size is 1, upsample before LSTM
-                if out_dim_1 == 1:
-                    new_size = layer['hidden_units']
-                    layers.append(nn.Conv1d(in_channels=1, out_channels=new_size, kernel_size=1))
-                    out_dim_1 = new_size
-                lstm_layer = nn.LSTM(input_size=out_dim_1, hidden_size=layer['hidden_units'], batch_first=True)
-                layers.append(lstm_layer)
-                out_dim_1 = layer['hidden_units']
-
-            elif layer['layer'] == 'GRU':
-                # if input feature size is 1, upsample before GRU
-                if out_dim_1 == 1:
-                    new_size = layer['hidden_units']
-                    layers.append(nn.Conv1d(in_channels=1, out_channels=new_size, kernel_size=1))
-                    out_dim_1 = new_size
-                gru_layer = nn.GRU(input_size=out_dim_1, hidden_size=layer['hidden_units'], batch_first=True)
-                layers.append(gru_layer)
-                out_dim_1 = layer['hidden_units']
-
-            elif layer['layer'] == 'Ensure3D':
-                layers.append(Ensure3D())
-
-            else:
-                raise ValueError("Layer not implemented")
-            
-            out_dim_tracker.append((out_dim_1, out_dim_2))
-
-            print(f"Output dimensions after layer {i}: ({out_dim_1}, {out_dim_2})")
-
-        if out_dim_2 != 1:
-            layers.append(nn.Flatten())
-            out_dim_tracker.append((out_dim_1*out_dim_2, 1))
-
-        if out_dim_1*out_dim_2 < 1:
-            print(f"error: cannot be dimension {out_dim_1*out_dim_2} ({out_dim_1} x {out_dim_2})")
-            print(layers)
-            print(f"inputs dim 2: {X_train_tensor.size(1)}")
-            print(out_dim_tracker)
-            exit(32)
-
-        layers.append(nn.Linear(out_dim_1*out_dim_2, 2))
-        layers.append(nn.Softmax(dim=1))
-
-        return nn.Sequential(*layers)
-    
-    """
-    - this method returns the activation function corresponding to the given name
-    - activation: name of the activation function
-    """
-    def get_activation(self, activation):
-        """
-        Returns the activation function corresponding to the given name.
-        """
-        if activation == 'relu':
-            return nn.ReLU()
-        elif activation == 'elu':
-            return nn.ELU()
-        elif activation == 'selu':
-            return nn.SELU()
-        elif activation == 'sigmoid':
-            return nn.Sigmoid()
-        elif activation == 'linear':
-            return nn.Identity()
-        else:
-            raise ValueError(f"Unsupported activation: {activation}")
-    
-    """
-    - method that loads the model from a checkpoint to resume training or evaluation with a previously trained model
-    - checkpoint_path: path to the checkpoint file
-    - kwargs: additional keyword arguments that are passed to the constructor
-    """
-    @classmethod
-    def load_from_checkpoint(cls, checkpoint_path, genotype, **kwargs):
-        instance = cls(genotype=genotype, **kwargs)
-        checkpoint = torch.load(checkpoint_path)
-        """
-        - instance.load_state_dict: loads the model state from the checkpoint
-        - checkpoint['state_dict']: stores the model state in the checkpoint
-        - strict=False: ignores the mismatch between the keys in the model and the checkpoint
-        """
-        instance.load_state_dict(checkpoint['state_dict'], strict=False)
-        return instance
-
-    """
-    - method that defines how the data flows through the neural network
-    - x: input data
-    - returns the output of the neural network (transformed data)
-    """
-    def forward(self, x):
-        for layer in self.model:
-            if isinstance(layer, (nn.LSTM, nn.GRU)):
-                # ensures the correct shape: (batch, seq_length, features)
-                if len(x.shape) == 2:
-                    x = x.unsqueeze(1)          # new shape is (batch, 1, features)
-                x = x.permute(0, 2, 1)          # converts to (batch, seq_length, features)
-                x, _ = layer(x)                 # applies RNN
-                x = x.permute(0, 2, 1)          # converts back to (batch, features, seq_length)
-            else:
-                x = layer(x)                    # otherwise, applies the layer
-        return x
-
-
-    """
-    - method that defines the training step for the neural network
-    - calculates the loss and updates the model's weights to improve its predictions
-    - batch: tuple containing input data (x) and target data (y) for training
-    """
     def training_step(self, batch, batch_idx):
-        loss, preds, acc = self._common_step(batch, batch_idx)
+        x, y = batch
+        if y.dim() > 1:  # Convert one-hot encoded y to class indices
+            y = torch.argmax(y, dim=1)
 
-        self.log('train_loss', loss, prog_bar=False)    # logs the training loss
-        self.log('train_acc', acc, prog_bar=False)      # logs the training accuracy
+        logits = self.forward(x)
+        loss = self.loss_fn(logits, y)
         return loss
 
-    """
-    - method that defines the validation step for the neural network
-    - measures how well the model is performing on unseen data without updating its weights
-    - calculates the loss and accuracy of the model on the validation set
-    """
-    def validation_step(self, batch, batch_idx):
-        loss, preds, acc = self._common_step(batch, batch_idx)
 
-        self.log('val_loss', loss, prog_bar=False)          # logs the validation loss
-        self.log('val_acc', acc, prog_bar=False)            # logs the validation accuracy
-        return {'val_loss': loss, 'val_acc': acc}
-
-    # utility method that implements the common processing step for making a prediction of the model
-    def _common_step(self, batch, batch_idx):
-        x, y = batch
-
-        # checks if x is wrongly shaped (e.g., [batch_size, 1201] instead of [batch_size, seq_length, input_size])
-        #print(f"Before reshaping: {x.shape}")  
-
-        # corrects the reshaping based on the expected model input
-        if len(x.shape) == 2:
-            x = x.view(x.size(0), 1, x.size(1))     # changes the last dimension to input size = 1
-
-        #print(f"After reshaping: {x.shape}")
-
-        logits = self.forward(x)                    # passes the input data through the neural network (predictions)
-
-        loss = self.loss_fn(logits, y)              # calculates the loss between the predictions and the target data
-        preds = logits.argmax(dim=1)                # returns the index of the maximum value in the predictions
-        acc = self.accuracy(preds, y)               # uses torchmetrics.Accuracy to calculate accuracy
-
-        return loss, preds, acc
-
-    """
-    - method that resets the accuracy metric at the start of each training epoch
-    """
-    def on_train_epoch_start(self):
-        self.accuracy.reset()
-
-    """
-    - method that resets the accuracy metric at the start of each validation epoch
-    """
-    def on_validation_epoch_start(self):
-        self.accuracy.reset()
-
-    """
-    - method that defines the training epoch end for the neural network
-    """
-    def on_train_epoch_end(self, unused_outputs=None):
-        self.accuracy.reset()
-        #torch.mps.empty_cache()  # clears GPU memory after the epoch
-    
-    """
-    - method that defines the validation epoch end for the neural network
-    - calculates the average validation accuracy of the model
-    """
-    def on_validation_epoch_end(self):
-        self.log('epoch_val_acc', self.accuracy.compute(), prog_bar=False)
-        self.accuracy.reset()
-        #torch.mps.empty_cache()  # clears GPU memory after the epoch
-
-    """
-    - method that specifies how the model's parameters should be updated during training
-    - defines the optimization algorithm -> Adam optimizer
-    - adjusts the model's weights during training to minimize the loss
-    - improves predictions by using past steps to guide the updates smoothly
-    """
     def configure_optimizers(self):
         return optim.Adam(self.parameters(), lr=1e-4)
+
+# Convolutional Neural Network (CNN)
+class CNN(pl.LightningModule):
+    def __init__(self, input_channels, num_filters, kernel_size, output_size=2):
+        super().__init__()
+        self.conv1 = nn.Conv1d(input_channels, num_filters, kernel_size=kernel_size)
+        self.pool = nn.MaxPool1d(2)
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.accuracy = torchmetrics.Accuracy(task="binary", num_classes=2)
+
+        # Compute FC input size dynamically
+        self.flattened_size = None
+        self.fc = None  # Placeholder for later initialization
+
+    def forward(self, x):
+        if x.dim() == 2:  # Ensure CNN expects 3D input
+            x = x.unsqueeze(1)  # Shape: (batch_size, 1, time_steps)
+
+        x = self.pool(torch.relu(self.conv1(x)))  # Apply Conv & Pooling
+        x = x.view(x.size(0), -1)  # Flatten the output
+
+        # Dynamically initialize FC layer on first forward pass
+        if self.fc is None:
+            self.flattened_size = x.shape[1]  # Dynamically get correct input size
+            self.fc = nn.Linear(self.flattened_size, 2).to(x.device)  # Reinitialize on the correct device
+        
+        return self.fc(x)  # Fully connected layer
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+
+        # Ensure labels are in correct format
+        if y.dim() > 1:  # Convert one-hot encoded y to class indices
+            y = torch.argmax(y, dim=1)
+
+        # Ensure `x` has correct shape before passing to forward()
+        if x.dim() == 2:  # If missing channel dimension, add one
+            x = x.unsqueeze(1)  # Shape: (batch_size, 1, time_steps)
+
+        logits = self.forward(x)  # Forward pass
+        loss = self.loss_fn(logits, y)  # Compute loss
+        return loss
+
+
+
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), lr=1e-4)
+
+# LSTM-based Model
+class LSTM(pl.LightningModule):
+    def __init__(self, input_size, hidden_units, output_size=2):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size, hidden_units, batch_first=True)
+        self.fc = nn.Linear(hidden_units, output_size)
+        self.loss_fn = nn.CrossEntropyLoss()
+
+    def forward(self, x):
+        if x.dim() == 2:  # Ensure 3D input for LSTM
+            x = x.unsqueeze(1)  # Shape: (batch_size, time_steps=1, feature_dim)
+
+        _, (h_n, _) = self.lstm(x)  # Get the last hidden state
+        h_n = h_n[-1]  # Extract the last layer's hidden state
+
+        output = self.fc(h_n)  # Fully connected layer
+
+        if output.dim() == 1:  # Ensure correct shape for classification
+            output = output.unsqueeze(0)  # Make sure it's at least (batch_size, num_classes)
+        
+        return output
+
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+
+        # Ensure labels are in correct format
+        if y.dim() > 1:  # Convert one-hot encoded y to class indices
+            y = torch.argmax(y, dim=1)
+
+        # Ensure `x` is correctly shaped for LSTM
+        if x.dim() == 2:  # If missing time-step dimension, add one
+            x = x.unsqueeze(1)  # Shape: (batch_size, 1, feature_dim)
+
+        logits = self.forward(x)  # Forward pass
+        loss = self.loss_fn(logits, y)  # Compute loss
+        return loss
+
+
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), lr=1e-4)
+
+
+# GRU-based Model
+class GRU(pl.LightningModule):
+    def __init__(self, input_size, hidden_units, output_size=2):
+        super().__init__()
+        self.gru = nn.GRU(input_size, hidden_units, batch_first=True)
+        self.fc = nn.Linear(hidden_units, output_size)
+        self.loss_fn = nn.CrossEntropyLoss()
+
+    def forward(self, x):
+        # Reshape input to ensure it is (batch_size, sequence_length, feature_dim)
+        if x.dim() == 4:  # If it's 4D, squeeze the second dimension
+            x = x.squeeze(1)  # Reduce from (batch, 1, seq_len, feat_dim) -> (batch, seq_len, feat_dim)
+        elif x.dim() == 2:  # If it's 2D, unsqueeze to create a sequence length of 1
+            x = x.unsqueeze(1)
+
+        _, h_n = self.gru(x)  # Get hidden state
+        return self.fc(h_n[-1])
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        if y.dim() > 1:  # Convert one-hot encoded y to class indices
+            y = torch.argmax(y, dim=1)
+
+        logits = self.forward(x)
+        loss = self.loss_fn(logits, y)
+        return loss
+
+
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), lr=1e-4)
+
+
+
+# Transformer-based Model
+class TransformerModel(pl.LightningModule):
+    def __init__(self, input_dim, num_heads=8, num_layers=2, hidden_dim=128, output_size=2):
+        super().__init__()
+
+        # Ensure input_dim is divisible by num_heads by padding if necessary
+        self.padding = (num_heads - (input_dim % num_heads)) % num_heads
+        self.input_dim = input_dim + self.padding
+
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.input_dim, nhead=num_heads, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc = nn.Linear(self.input_dim, output_size)
+        self.loss_fn = nn.CrossEntropyLoss()
+
+    def forward(self, x):
+        if x.dim() == 2:  # Ensure input has the correct shape
+            x = x.unsqueeze(1)  # Shape: (batch_size, 1, feature_dim)
+
+        # Pad the input if necessary
+        if self.padding > 0:
+            x = torch.nn.functional.pad(x, (0, self.padding))
+
+        x = self.transformer_encoder(x)
+        return self.fc(x.mean(dim=1))  # Pooling over sequence length
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        if y.dim() > 1:  # Convert one-hot encoded y to class indices
+            y = torch.argmax(y, dim=1)
+
+        logits = self.forward(x)
+        loss = self.loss_fn(logits, y)
+        return loss
+
+    def configure_optimizers(self):
+        return optim.Adam(self.parameters(), lr=1e-4)
+

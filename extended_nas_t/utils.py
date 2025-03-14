@@ -1,6 +1,7 @@
 import json
 import os
 from config import alpha, BETA
+import csv
 
 # ---- Save run results to a JSON file ---- #
 """
@@ -87,6 +88,17 @@ def save_model_sizes_json(filename, all_model_sizes):
     with open(filename, 'w') as file:
         json.dump(data, file, indent=4)
 
+def save_results_csv(filename, run_id, generation, architecture, layers, val_accuracy, model_size, runtime):
+    file_exists = os.path.exists(filename)
+    
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        
+        # Add headers if file is newly created
+        if not file_exists:
+            writer.writerow(["Run ID", "Generation", "Architecture", "Layers", "Validation Accuracy", "Model Size", "Training Time (s)"])
+        
+        writer.writerow([run_id, generation, architecture, layers, val_accuracy, model_size, runtime])
 
 """
 - method that calculates the fitness score of the architecture based on its performance
@@ -101,17 +113,7 @@ def save_model_sizes_json(filename, all_model_sizes):
 - fitness: overall fitness score of the architecture
 - higher fitness -> better architecture
 """
-def fitness_function(architecture, validation_accuracy):
-    #model_size = sum(layer.get('filters', 0) + layer.get('units', 0) for layer in architecture)
-
-    # dynamic weights for exploration and exploitation
-    # todo: fixed rates
-    #dynamic_alpha = alpha * (1 + (generation / max_generations * 0.5))
-    #dynamic_BETA = BETA * (1 - (generation / max_generations * 0.5))
-    
-    #size_penalty = dynamic_alpha * model_size
-    #time_penalty = dynamic_BETA
-
-    #noise = random.uniform(0, 0.01)    # slight noise (randomness) for the fitness score
-    fitness = validation_accuracy - alpha - BETA #size_penalty - time_penalty #+ noise
+def fitness_function(architecture, validation_accuracy, model_size):
+    size_penalty = alpha * model_size
+    fitness = validation_accuracy - size_penalty - BETA
     return max(0.0, fitness)

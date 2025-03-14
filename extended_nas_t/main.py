@@ -1,12 +1,10 @@
-import logging
-from evolutionary_algorithm import NASDifferentialEvolution
-import time
+import pandas as pd
+from benchmark_models import benchmark_models
 
-overall_start_time = time.time()
+def main():
+    print("Starting Model Benchmarking...")
+    results_df = benchmark_models()
+    print("Benchmarking Completed!")
 
 if __name__ == "__main__":
-    logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
-    nas_de = NASDifferentialEvolution(verbose=True)
-    nas_de.evolve()
-
-    overall_end_time = time.time()
+    main()

@@ -1,9 +1,10 @@
 # List of file paths to clear
 file_paths = [
-    "/abyss/home/NAS-T/nas_t/accuracies.json",
-    "/abyss/home/NAS-T/nas_t/model_sizes.json",
-    "/abyss/home/NAS-T/nas_t/evolutionary_runs.json",
-    "/abyss/home/NAS-T/nas_t/standard_results.json"
+    "/app/benchmark_results.csv",  # Ensure this is included
+    "/abyss/home/NAS-T/extended_nas_t/accuracies.json",
+    "/abyss/home/NAS-T/extended_nas_t/model_sizes.json",
+    "/abyss/home/NAS-T/extended_nas_t/evolutionary_runs.json",
+    "/abyss/home/NAS-T/extended_nas_t/standard_results.json",
 ]
 
 # Iterate over the file paths and clear each file
