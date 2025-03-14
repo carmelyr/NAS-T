@@ -35,7 +35,10 @@ def get_layer_info(model):
         elif isinstance(module, torch.nn.GRU):
             layer_info = f"{name}: GRU(input_size={module.input_size}, hidden_size={module.hidden_size}, num_layers={module.num_layers})"
         elif isinstance(module, torch.nn.TransformerEncoder):
-            layer_info = f"{name}: TransformerEncoder(num_layers={module.num_layers}, nhead={module.nhead})"
+            # Extract nhead from the encoder layer's self_attn attribute
+            encoder_layer = module.layers[0]  # Get the first encoder layer
+            nhead = encoder_layer.self_attn.num_heads  # Access num_heads from self_attn
+            layer_info = f"{name}: TransformerEncoder(num_layers={len(module.layers)}, nhead={nhead})"
         elif isinstance(module, torch.nn.ReLU):
             layer_info = f"{name}: ReLU()"
         else:

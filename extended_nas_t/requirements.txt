@@ -1,5 +1,0 @@
-torch
-pytorch-lightning
-pandas
-scikit-learn
-
