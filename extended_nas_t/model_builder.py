@@ -23,7 +23,6 @@ def build_model(model_type, **kwargs):
     elif model_type == "GRU":
         return GRU(input_size=input_size, hidden_units=kwargs["hidden_units"], output_size=2)
 
-    # Transformer is disabled
     elif model_type == "Transformer":
         return TransformerModel(input_dim=input_size, num_heads=kwargs.get("num_heads", 8), num_layers=kwargs.get("num_layers", 2), output_size=2)
 
@@ -33,14 +32,18 @@ def build_model(model_type, **kwargs):
 
 # Fully Connected Neural Network (FCNN)
 class FCNN(pl.LightningModule):
-    def __init__(self, input_size, hidden_units=64, output_size=2, num_layers=3):
+    def __init__(self, input_size, hidden_units=256, output_size=2, num_layers=5):
         super().__init__()
         self.layers = nn.ModuleList()
         self.layers.append(nn.Linear(input_size, hidden_units))
+        self.layers.append(nn.BatchNorm1d(hidden_units))
         self.layers.append(nn.ReLU())
+        self.layers.append(nn.Dropout(p=0.2))
         for _ in range(num_layers - 1):
             self.layers.append(nn.Linear(hidden_units, hidden_units))
+            self.layers.append(nn.BatchNorm1d(hidden_units))
             self.layers.append(nn.ReLU())
+            self.layers.append(nn.Dropout(p=0.2))
         self.layers.append(nn.Linear(hidden_units, output_size))
         self.loss_fn = nn.CrossEntropyLoss()
 
@@ -51,7 +54,7 @@ class FCNN(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-        if y.dim() > 1:  # Convert one-hot encoded y to class indices
+        if y.dim() > 1:
             y = torch.argmax(y, dim=1)
 
         logits = self.forward(x)
@@ -59,35 +62,47 @@ class FCNN(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=1e-4)
+        return optim.Adam(self.parameters(), lr=1e-3)
 
 # Convolutional Neural Network (CNN)
 class CNN(pl.LightningModule):
-    def __init__(self, input_channels, num_filters=32, kernel_size=3, output_size=2):
+    def __init__(self, input_channels, num_filters=64, kernel_size=5, output_size=2):
         super().__init__()
         self.conv1 = nn.Conv1d(input_channels, num_filters, kernel_size)
+        self.bn1 = nn.BatchNorm1d(num_filters)
         self.conv2 = nn.Conv1d(num_filters, num_filters * 2, kernel_size)
+        self.bn2 = nn.BatchNorm1d(num_filters * 2)
+        self.conv3 = nn.Conv1d(num_filters * 2, num_filters * 4, kernel_size)
+        self.bn3 = nn.BatchNorm1d(num_filters * 4)
+        self.conv4 = nn.Conv1d(num_filters * 4, num_filters * 8, kernel_size)
+        self.bn4 = nn.BatchNorm1d(num_filters * 8)
+        self.conv5 = nn.Conv1d(num_filters * 8, num_filters * 16, kernel_size)
+        self.bn5 = nn.BatchNorm1d(num_filters * 16)
+        self.conv6 = nn.Conv1d(num_filters * 16, num_filters * 32, kernel_size)
+        self.bn6 = nn.BatchNorm1d(num_filters * 32)
         self.pool = nn.MaxPool1d(2)
-        self.fc = None  # Placeholder for the fully connected layer
+        self.global_pool = nn.AdaptiveAvgPool1d(1)  # Global Average Pooling
+        self.dropout = nn.Dropout(p=0.3)
+        self.fc = nn.Linear(num_filters * 16, output_size)
         self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, x):
-        if x.dim() == 2:  # Ensure CNN expects 3D input
-            x = x.unsqueeze(1)  # Shape: (batch_size, 1, time_steps)
+        if x.dim() == 2:
+            x = x.unsqueeze(1)  # shape: (batch_size, 1, time_steps)
 
         # Apply Conv & Pooling
-        x = self.pool(torch.relu(self.conv1(x)))  # Shape: (batch_size, num_filters, time_steps // 2)
-        x = self.pool(torch.relu(self.conv2(x)))  # Shape: (batch_size, num_filters * 2, time_steps // 4)
+        x = self.pool(torch.relu(self.bn1(self.conv1(x))))
+        x = self.pool(torch.relu(self.bn2(self.conv2(x))))
+        x = self.pool(torch.relu(self.bn3(self.conv3(x))))
+        x = self.pool(torch.relu(self.bn4(self.conv4(x))))
+        x = self.pool(torch.relu(self.bn5(self.conv5(x))))
 
-        # Flatten the output
-        x = x.view(x.size(0), -1)  # Shape: (batch_size, num_filters * 2 * (time_steps // 4))
+        # Global Average Pooling
+        x = self.global_pool(x).squeeze(-1)  # shape: (batch_size, num_filters * 16)
 
-        # Dynamically initialize FC layer on first forward pass
-        if self.fc is None:
-            self.flattened_size = x.shape[1]  # Dynamically get correct input size
-            self.fc = nn.Linear(self.flattened_size, 2).to(x.device)  # Reinitialize on the correct device
-        
-        return self.fc(x)  # Fully connected layer
+        # Fully connected layer
+        x = self.fc(x)
+        return x
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -109,24 +124,19 @@ class CNN(pl.LightningModule):
 
 # LSTM-based Model
 class LSTM(pl.LightningModule):
-    def __init__(self, input_size, hidden_units=64, output_size=2, num_layers=2):
+    def __init__(self, input_size, hidden_units=128, output_size=2, num_layers=6):
         super().__init__()
-        self.lstm = nn.LSTM(input_size, hidden_units, num_layers=num_layers, batch_first=True, dropout=0.2 if num_layers > 1 else 0)
-        self.fc = nn.Linear(hidden_units, output_size)
+        self.lstm = nn.LSTM(input_size, hidden_units, num_layers=num_layers, batch_first=True, bidirectional=True, dropout=0.3 if num_layers > 1 else 0)
+        self.fc = nn.Linear(hidden_units * 2, output_size)  # Multiply by 2 for bidirectional
         self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, x):
         if x.dim() == 2:  # Ensure 3D input for LSTM
             x = x.unsqueeze(1)  # Shape: (batch_size, time_steps=1, feature_dim)
 
-        _, (h_n, _) = self.lstm(x)  # Get the last hidden state
-        h_n = h_n[-1]  # Extract the last layer's hidden state
-
-        output = self.fc(h_n)  # Fully connected layer
-
-        if output.dim() == 1:  # Ensure correct shape for classification
-            output = output.unsqueeze(0)  # Make sure it's at least (batch_size, num_classes)
-        
+        lstm_out, _ = self.lstm(x)  # Get the LSTM output
+        lstm_out = lstm_out[:, -1, :]  # Use the last time step's output
+        output = self.fc(lstm_out)  # Fully connected layer
         return output
 
     def training_step(self, batch, batch_idx):
@@ -145,26 +155,25 @@ class LSTM(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=1e-4)
+        return optim.Adam(self.parameters(), lr=1e-3)
 
 
 # GRU-based Model
 class GRU(pl.LightningModule):
-    def __init__(self, input_size, hidden_units, output_size=2):
+    def __init__(self, input_size, hidden_units=128, output_size=2):
         super().__init__()
-        self.gru = nn.GRU(input_size, hidden_units, batch_first=True)
-        self.fc = nn.Linear(hidden_units, output_size)
+        self.gru = nn.GRU(input_size, hidden_units, batch_first=True, num_layers=5, bidirectional=True, dropout=0.4)
+        self.fc = nn.Linear(hidden_units * 2, output_size)  # Multiply by 2 for bidirectional
         self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, x):
-        # Reshape input to ensure it is (batch_size, sequence_length, feature_dim)
-        if x.dim() == 4:  # If it's 4D, squeeze the second dimension
-            x = x.squeeze(1)  # Reduce from (batch, 1, seq_len, feat_dim) -> (batch, seq_len, feat_dim)
-        elif x.dim() == 2:  # If it's 2D, unsqueeze to create a sequence length of 1
-            x = x.unsqueeze(1)
+        if x.dim() == 2:  # Ensure 3D input for GRU
+            x = x.unsqueeze(1)  # Shape: (batch_size, time_steps=1, feature_dim)
 
-        _, h_n = self.gru(x)  # Get hidden state
-        return self.fc(h_n[-1])
+        gru_out, _ = self.gru(x)  # Get the GRU output
+        gru_out = gru_out[:, -1, :]  # Use the last time step's output
+        output = self.fc(gru_out)  # Fully connected layer
+        return output
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -176,11 +185,11 @@ class GRU(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=1e-4)
+        return optim.Adam(self.parameters(), lr=1e-3)
 
 # Transformer-based Model
 class TransformerModel(pl.LightningModule):
-    def __init__(self, input_dim, num_heads=8, num_layers=4, hidden_dim=128, output_size=2):
+    def __init__(self, input_dim, num_heads=8, num_layers=7, hidden_dim=128, output_size=2):
         super().__init__()
 
         # Ensure input_dim is divisible by num_heads by padding if necessary
