@@ -91,15 +91,6 @@ def save_model_sizes_json(filename, all_model_sizes):
 def save_results_csv(filename, run_id, generation, architecture, layers, val_accuracy, model_size, runtime):
     file_exists = os.path.exists(filename)
     
-    # If the file exists, read the last run_id to determine the next run_id
-    if file_exists:
-        with open(filename, mode='r') as file:
-            reader = csv.reader(file)
-            rows = list(reader)
-            if len(rows) > 1:  # Check if there are rows (excluding header)
-                last_run_id = int(rows[-1][0])  # Get the last run_id from the last row
-                run_id = last_run_id + 1  # Increment run_id
-    
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
         
@@ -107,7 +98,7 @@ def save_results_csv(filename, run_id, generation, architecture, layers, val_acc
         if not file_exists:
             writer.writerow(["Run ID", "Generation", "Architecture", "Layers", "Validation Accuracy", "Model Size", "Training Time (s)"])
         
-        # Write the new row with the updated run_id
+        # Write the new row with the provided run_id
         writer.writerow([run_id, generation, architecture, layers, val_accuracy, model_size, runtime])
 
 """

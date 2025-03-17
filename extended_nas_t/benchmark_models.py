@@ -6,6 +6,8 @@ from model_builder import FCNN, CNN, LSTM, GRU, TransformerModel
 from data_handler import get_data_splits
 from utils import save_results_csv
 import time
+import os
+import csv
 
 # List of model types to test
 MODEL_TYPES = ["FCNN", "CNN", "LSTM", "GRU", "Transformer"]
@@ -49,6 +51,21 @@ def get_layer_info(model):
 
 def benchmark_models():
     results = []
+    
+    # Determine the run_id before saving the results for each model
+    file_exists = os.path.exists("benchmark_results.csv")
+    if file_exists:
+        with open("benchmark_results.csv", mode='r') as file:
+            reader = csv.reader(file)
+            rows = list(reader)
+            if len(rows) > 1:  # Check if there are rows (excluding header)
+                last_run_id = int(rows[-1][0])  # Get the last run_id from the last row
+                run_id = last_run_id + 1  # Increment run_id
+            else:
+                run_id = 1
+    else:
+        run_id = 1
+    
     for model_type in MODEL_TYPES:
         print(f"Benchmarking model: {model_type}")
         
@@ -94,8 +111,8 @@ def benchmark_models():
         # Calculate model size (number of trainable parameters)
         model_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
         
-        # Save results to CSV (generation starts from 1)
-        save_results_csv("benchmark_results.csv", 1, 1, model_type, layers, avg_accuracy, model_size, avg_time)
+        # Save results to CSV with the same run_id for all models in this run
+        save_results_csv("benchmark_results.csv", run_id, 1, model_type, layers, avg_accuracy, model_size, avg_time)
         
         # Append results for the final DataFrame
         results.append([model_type, avg_accuracy, avg_time, model_size])
