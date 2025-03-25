@@ -1,6 +1,7 @@
 # List of file paths to clear
 file_paths = [
-    "/app/benchmark_results.csv",  # Ensure this is included
+    "/app/benchmark_results.csv",
+    "/app/evolution_results.csv",
     "/abyss/home/NAS-T/extended_nas_t/accuracies.json",
     "/abyss/home/NAS-T/extended_nas_t/model_sizes.json",
     "/abyss/home/NAS-T/extended_nas_t/evolutionary_runs.json",

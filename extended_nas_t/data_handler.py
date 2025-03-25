@@ -1,8 +1,9 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split, RepeatedKFold
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 import torch
 from torch.utils.data import TensorDataset, DataLoader
+import numpy as np
 
 # loads the data from the classification_ozone folder
 X_analysis = pd.read_csv('classification_ozone/X_train.csv')
@@ -19,24 +20,41 @@ scaler = StandardScaler()
 X_analysis = scaler.fit_transform(X_analysis)
 X_test = scaler.transform(X_test)
 
-y_analysis = y_analysis.to_numpy().flatten()
-y_test = y_test.to_numpy().flatten()
+
+# Convert y to one-hot encoded format
+encoder = OneHotEncoder(sparse=False)
+y_analysis = encoder.fit_transform(y_analysis.to_numpy().reshape(-1, 1))
+y_test = encoder.transform(y_test.to_numpy().reshape(-1, 1))
+
+#y_analysis = y_analysis.to_numpy().flatten()
+#y_test = y_test.to_numpy().flatten()
 
 # Prepare datasets for cross-validation
 rkf = RepeatedKFold(n_splits=5, n_repeats=3, random_state=42)
+
 def get_data_splits():
     for train_idx, val_idx in rkf.split(X_analysis):
         X_train, X_validation = X_analysis[train_idx], X_analysis[val_idx]
         y_train, y_validation = y_analysis[train_idx], y_analysis[val_idx]
+
+        # Verify class distribution
+        print("Train classes:", np.unique(np.argmax(y_train, axis=1), return_counts=True))
+        print("Val classes:", np.unique(np.argmax(y_validation, axis=1), return_counts=True))
         
+        # Reshape data for Transformer: (batch_size, sequence_length=1, input_dim)
+        X_train = X_train.reshape(X_train.shape[0], 1, X_train.shape[1])
+        X_validation = X_validation.reshape(X_validation.shape[0], 1, X_validation.shape[1])
+        
+        # Convert to tensors - keep y as one-hot encoded for training
         X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-        y_train_tensor = torch.tensor(y_train, dtype=torch.long)
+        y_train_tensor = torch.tensor(y_train, dtype=torch.float32)  # Keep one-hot for loss calculation
         X_validation_tensor = torch.tensor(X_validation, dtype=torch.float32)
-        y_validation_tensor = torch.tensor(y_validation, dtype=torch.long)
+        y_validation_tensor = torch.tensor(y_validation, dtype=torch.float32)  # Keep one-hot
         
+        # Create datasets and loaders
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
         validation_dataset = TensorDataset(X_validation_tensor, y_validation_tensor)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0)
-        validation_loader = DataLoader(validation_dataset, batch_size=32, shuffle=False, num_workers=0)
+        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
+        validation_loader = DataLoader(validation_dataset, batch_size=32, shuffle=False, num_workers=2)
         
         yield train_loader, validation_loader

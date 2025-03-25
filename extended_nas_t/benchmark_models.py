@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 import pandas as pd
 from torch.utils.data import DataLoader
-from model_builder import FCNN, CNN, LSTM, GRU, TransformerModel
+from model_builder import TransformerModel
 from data_handler import get_data_splits
 from utils import save_results_csv
 import time
@@ -10,7 +10,7 @@ import os
 import csv
 
 # List of model types to test
-MODEL_TYPES = ["FCNN", "CNN", "LSTM", "GRU", "Transformer"]
+MODEL_TYPES = ["Transformer"]
 
 def get_layer_info(model):
     """
@@ -72,20 +72,13 @@ def benchmark_models():
         total_accuracy = 0.0
         total_time = 0.0
         fold_count = 0
+        fold_accuracies = []  # Store accuracies for each fold
         
         for train_loader, val_loader in get_data_splits():
             model = None
             input_size = next(iter(train_loader))[0].shape[-1]
             
-            if model_type == "FCNN":
-                model = FCNN(input_size=input_size, hidden_units=64)
-            elif model_type == "CNN":
-                model = CNN(input_channels=1, num_filters=32, kernel_size=3)
-            elif model_type == "LSTM":
-                model = LSTM(input_size=input_size, hidden_units=64)
-            elif model_type == "GRU":
-                model = GRU(input_size=input_size, hidden_units=64)
-            elif model_type == "Transformer":
+            if model_type == "Transformer":
                 model = TransformerModel(input_dim=input_size, num_heads=8, num_layers=2, hidden_dim=128)
             
             if model is None:
@@ -104,6 +97,7 @@ def benchmark_models():
             total_accuracy += acc
             total_time += elapsed_time
             fold_count += 1
+            fold_accuracies.append(acc)  # Store accuracy for this fold
         
         avg_accuracy = total_accuracy / fold_count
         avg_time = total_time / fold_count
@@ -112,7 +106,7 @@ def benchmark_models():
         model_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
         
         # Save results to CSV with the same run_id for all models in this run
-        save_results_csv("benchmark_results.csv", run_id, 1, model_type, layers, avg_accuracy, model_size, avg_time)
+        save_results_csv("benchmark_results.csv", run_id, 1, model_type, layers, fold_accuracies, avg_accuracy, model_size, avg_time)
         
         # Append results for the final DataFrame
         results.append([model_type, avg_accuracy, avg_time, model_size])
@@ -130,7 +124,8 @@ def evaluate_model(model, val_loader):
         for X, y in val_loader:
             outputs = model(X)
             predicted = torch.argmax(outputs, dim=1)
-            correct += (predicted == y).sum().item()
+            true_labels = torch.argmax(y, dim=1)  # Convert one-hot encoded y to class indices
+            correct += (predicted == true_labels).sum().item()
             total += y.size(0)
     return correct / total
 

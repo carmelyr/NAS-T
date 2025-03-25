@@ -88,18 +88,18 @@ def save_model_sizes_json(filename, all_model_sizes):
     with open(filename, 'w') as file:
         json.dump(data, file, indent=4)
 
-def save_results_csv(filename, run_id, generation, architecture, layers, val_accuracy, model_size, runtime):
+def save_results_csv(filename, run_id, generation, architecture, layers, fold_accuracies, val_accuracy, model_size, runtime):
     file_exists = os.path.exists(filename)
     
     with open(filename, mode='a', newline='') as file:
         writer = csv.writer(file)
         
-        # Add headers if file is newly created
-        if not file_exists:
-            writer.writerow(["Run ID", "Generation", "Architecture", "Layers", "Validation Accuracy", "Model Size", "Training Time (s)"])
+        # Add headers if file is newly created or empty
+        if not file_exists or os.stat(filename).st_size == 0:
+            writer.writerow(["Run ID", "Generation", "Architecture", "Layers", "Fold Accuracies", "Validation Accuracy", "Model Size", "Training Time (s)"])
         
         # Write the new row with the provided run_id
-        writer.writerow([run_id, generation, architecture, layers, val_accuracy, model_size, runtime])
+        writer.writerow([run_id, generation, architecture, layers, fold_accuracies, val_accuracy, model_size, runtime])
 
 """
 - method that calculates the fitness score of the architecture based on its performance
@@ -117,4 +117,5 @@ def save_results_csv(filename, run_id, generation, architecture, layers, val_acc
 def fitness_function(architecture, validation_accuracy, model_size):
     size_penalty = alpha * model_size
     fitness = validation_accuracy - size_penalty - BETA
+    print(f"Debug - val_acc: {validation_accuracy}, model_size: {model_size}, size_penalty: {size_penalty}, fitness: {fitness}")
     return max(0.0, fitness)

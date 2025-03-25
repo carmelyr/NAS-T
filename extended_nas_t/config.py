@@ -2,14 +2,14 @@ import random
 import torch
 
 # Hyperparameters
-population_size = 10    # number of individuals in the population
-generations = 5
+population_size = 5    # number of individuals in the population
+generations = 3
 F = 0.6                 # mutation factor
 CR = 0.7                # crossover rate
-alpha = 0.0001          # size penalty
-BETA = 0.00001          # time penalty
+alpha = 0.0000001       # size penalty
+BETA = 0.0000001        # time penalty
 num_folds = 5           # number of folds for cross-validation
-num_repeats = 3         # number of repeats for cross-validation
+num_repeats = 1         # number of repeats for cross-validation
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 #device = 'mps'          # device to run the model on (mps: multi-processing server, cuda: GPU, cpu: CPU)
 n = 7                   # number of layers in the neural network
