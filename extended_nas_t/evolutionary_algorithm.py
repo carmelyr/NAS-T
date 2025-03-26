@@ -109,12 +109,13 @@ class NASDifferentialEvolution:
                 
                 # Configure trainer
                 trainer = pl.Trainer(
-                    max_epochs=30,
+                    max_epochs=100,
+                    min_epochs=30,
                     enable_checkpointing=False,
                     callbacks=[
                         pl.callbacks.EarlyStopping(
                             monitor="val_loss",
-                            patience=5,
+                            patience=10,
                             mode="min",
                             min_delta=0.01
                         )

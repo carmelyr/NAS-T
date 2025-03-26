@@ -49,9 +49,29 @@ def get_layer_info(model):
         layers.append(layer_info)
     return ", ".join(layers)
 
+def get_next_run_id(results_file):
+    """
+    Reads the last run_id from the results file and increments it.
+    If the file does not exist or is empty, starts with run_id = 1.
+    """
+    if not os.path.exists(results_file):
+        return 1
+    try:
+        with open(results_file, "r") as f:
+            reader = csv.reader(f)
+            rows = list(reader)
+            if len(rows) <= 1:  # Only header or empty file
+                return 1
+            last_run_id = int(rows[-1][0])  # First column is run_id
+            return last_run_id + 1
+    except Exception as e:
+        print(f"Error reading run_id from {results_file}: {e}")
+        return 1
+
 def benchmark_models():
     results = []
-    run_id = 1  # Simplified run_id for now
+    results_file = "benchmark_results.csv"
+    run_id = get_next_run_id(results_file)  # Get the next run_id
     
     for model_type in MODEL_TYPES:
         print(f"Benchmarking model: {model_type}")
@@ -79,6 +99,7 @@ def benchmark_models():
             # Configure trainer with both train and val loaders
             trainer = pl.Trainer(
                 max_epochs=100,  # Increased epochs
+                min_epochs=30,
                 enable_checkpointing=True,
                 callbacks=[
                     pl.callbacks.EarlyStopping(
@@ -114,7 +135,7 @@ def benchmark_models():
             model_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
             
             save_results_csv(
-                "benchmark_results.csv",
+                results_file,
                 run_id,
                 1,
                 model_type,
