@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 import pandas as pd
 from torch.utils.data import DataLoader
-from model_builder import TransformerModel
+from model_builder import build_model
 from data_handler import get_data_splits
 from utils import save_results_csv
 import time
@@ -10,7 +10,7 @@ import os
 import csv
 
 # List of model types to test
-MODEL_TYPES = ["Transformer"]
+MODEL_TYPES = ["LSTM"]
 
 def get_layer_info(model):
     """
@@ -51,20 +51,7 @@ def get_layer_info(model):
 
 def benchmark_models():
     results = []
-    
-    # Determine the run_id before saving the results for each model
-    file_exists = os.path.exists("benchmark_results.csv")
-    if file_exists:
-        with open("benchmark_results.csv", mode='r') as file:
-            reader = csv.reader(file)
-            rows = list(reader)
-            if len(rows) > 1:  # Check if there are rows (excluding header)
-                last_run_id = int(rows[-1][0])  # Get the last run_id from the last row
-                run_id = last_run_id + 1  # Increment run_id
-            else:
-                run_id = 1
-    else:
-        run_id = 1
+    run_id = 1  # Simplified run_id for now
     
     for model_type in MODEL_TYPES:
         print(f"Benchmarking model: {model_type}")
@@ -72,46 +59,74 @@ def benchmark_models():
         total_accuracy = 0.0
         total_time = 0.0
         fold_count = 0
-        fold_accuracies = []  # Store accuracies for each fold
+        fold_accuracies = []
         
         for train_loader, val_loader in get_data_splits():
             model = None
             input_size = next(iter(train_loader))[0].shape[-1]
             
-            if model_type == "Transformer":
-                model = TransformerModel(input_dim=input_size, num_heads=8, num_layers=2, hidden_dim=128)
+            if model_type == "LSTM":
+                model = build_model(
+                    model_type="LSTM",
+                    input_size=input_size,
+                    hidden_units=128,
+                    output_size=2  # Assuming binary classification
+                )
             
             if model is None:
-                print(f"Skipping unknown model type: {model_type}")
                 continue
             
-            # Dynamically extract the layer information
-            layers = get_layer_info(model)
+            # Configure trainer with both train and val loaders
+            trainer = pl.Trainer(
+                max_epochs=100,  # Increased epochs
+                enable_checkpointing=True,
+                callbacks=[
+                    pl.callbacks.EarlyStopping(
+                        monitor="val_acc",  # Monitor accuracy instead of loss
+                        patience=10,
+                        mode="max",
+                        min_delta=0.001
+                    ),
+                    pl.callbacks.ModelCheckpoint(
+                        monitor="val_acc",
+                        mode="max",
+                        save_top_k=1
+                    )
+                ],
+                enable_progress_bar=True,
+                logger=True,
+                gradient_clip_val=1.0  # Prevent exploding gradients
+            )
             
-            trainer = pl.Trainer(max_epochs=50, enable_progress_bar=True, logger=False)
             start_time = time.time()
-            trainer.fit(model, train_loader)
+            trainer.fit(model, train_loader, val_loader)  # Pass both loaders
             elapsed_time = time.time() - start_time
             
             acc = evaluate_model(model, val_loader)
             total_accuracy += acc
             total_time += elapsed_time
             fold_count += 1
-            fold_accuracies.append(acc)  # Store accuracy for this fold
+            fold_accuracies.append(acc)
         
-        avg_accuracy = total_accuracy / fold_count
-        avg_time = total_time / fold_count
-        
-        # Calculate model size (number of trainable parameters)
-        model_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        
-        # Save results to CSV with the same run_id for all models in this run
-        save_results_csv("benchmark_results.csv", run_id, 1, model_type, layers, fold_accuracies, avg_accuracy, model_size, avg_time)
-        
-        # Append results for the final DataFrame
-        results.append([model_type, avg_accuracy, avg_time, model_size])
-        
-    # Create a DataFrame with all results
+        if fold_count > 0:
+            avg_accuracy = total_accuracy / fold_count
+            avg_time = total_time / fold_count
+            model_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            
+            save_results_csv(
+                "benchmark_results.csv",
+                run_id,
+                1,
+                model_type,
+                get_layer_info(model),
+                fold_accuracies,
+                avg_accuracy,
+                model_size,
+                avg_time
+            )
+            
+            results.append([model_type, avg_accuracy, avg_time, model_size])
+    
     results_df = pd.DataFrame(results, columns=["Model Type", "Avg Accuracy", "Avg Time (s)", "Model Size"])
     print(results_df)
     return results_df

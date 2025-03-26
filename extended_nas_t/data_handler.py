@@ -1,6 +1,6 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split, RepeatedKFold
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import RobustScaler, OneHotEncoder
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
@@ -16,10 +16,9 @@ X_analysis.fillna(X_analysis.mean(), inplace=True)
 X_test.fillna(X_test.mean(), inplace=True)
 
 # scales data using z-score normalization
-scaler = StandardScaler()
+scaler = RobustScaler()
 X_analysis = scaler.fit_transform(X_analysis)
 X_test = scaler.transform(X_test)
-
 
 # Convert y to one-hot encoded format
 encoder = OneHotEncoder(sparse=False)
@@ -30,7 +29,7 @@ y_test = encoder.transform(y_test.to_numpy().reshape(-1, 1))
 #y_test = y_test.to_numpy().flatten()
 
 # Prepare datasets for cross-validation
-rkf = RepeatedKFold(n_splits=5, n_repeats=3, random_state=42)
+rkf = RepeatedKFold(n_splits=5, n_repeats=1, random_state=42)
 
 def get_data_splits():
     for train_idx, val_idx in rkf.split(X_analysis):

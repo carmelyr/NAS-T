@@ -21,35 +21,26 @@ class NASDifferentialEvolution:
         # Initialize with Transformer models but with different hyperparameters
         population = []
         for _ in range(self.population_size):
-            # Randomly generate hyperparameters for the Transformer model
-            num_heads = random.choice([4, 8, 12])
-            num_layers = random.choice([2, 4, 6])
-            hidden_dim = random.choice([64, 128, 256])
             population.append({
-                "model_type": "Transformer",
-                "num_heads": num_heads,
-                "num_layers": num_layers,
-                "hidden_dim": hidden_dim
+            "model_type": "LSTM",
+            "hidden_units": random.choice([64, 128, 256]),
+            "num_layers": random.choice([1, 2, 3])
             })
         return population
 
     def mutate(self, parent1, parent2, parent3, F):
-        # Create a new model by combining hyperparameters from parents
         mutant = {
-            "model_type": "Transformer",
-            "num_heads": random.choice([parent1["num_heads"], parent2["num_heads"], parent3["num_heads"]]),
-            "num_layers": random.choice([parent1["num_layers"], parent2["num_layers"], parent3["num_layers"]]),
-            "hidden_dim": random.choice([parent1["hidden_dim"], parent2["hidden_dim"], parent3["hidden_dim"]])
+            "model_type": "LSTM",
+            "hidden_units": random.choice([parent1["hidden_units"], parent2["hidden_units"], parent3["hidden_units"]]),
+            "num_layers": random.choice([parent1["num_layers"], parent2["num_layers"], parent3["num_layers"]])
         }
         return mutant
 
     def crossover(self, parent, mutant, CR):
-        # Randomly select hyperparameters from parent or mutant
         offspring = {
-            "model_type": "Transformer",
-            "num_heads": parent["num_heads"] if random.random() < CR else mutant["num_heads"],
-            "num_layers": parent["num_layers"] if random.random() < CR else mutant["num_layers"],
-            "hidden_dim": parent["hidden_dim"] if random.random() < CR else mutant["hidden_dim"]
+            "model_type": "LSTM",
+            "hidden_units": parent["hidden_units"] if random.random() < CR else mutant["hidden_units"],
+            "num_layers": parent["num_layers"] if random.random() < CR else mutant["num_layers"]
         }
         return offspring
     
@@ -118,7 +109,7 @@ class NASDifferentialEvolution:
                 
                 # Configure trainer
                 trainer = pl.Trainer(
-                    max_epochs=50,
+                    max_epochs=30,
                     enable_checkpointing=False,
                     callbacks=[
                         pl.callbacks.EarlyStopping(

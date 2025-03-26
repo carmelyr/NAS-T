@@ -10,34 +10,12 @@ def build_model(model_type, **kwargs):
     input_size = kwargs.get("input_size", 1)
     output_size = kwargs.get("output_size", 2)
 
-    #if model_type == "FCNN":
-    #    return FCNN(input_size=input_size, hidden_units=kwargs.get("hidden_units", 64), output_size=2)
-
-    #elif model_type == "CNN":
-    #    return CNN(input_channels=kwargs.get("input_channels", 1),
-                  # num_filters=kwargs.get("num_filters", 32),
-                  # kernel_size=kwargs.get("kernel_size", 3),
-                  # output_size=2)
-
-    #elif model_type == "LSTM":
-    #    return LSTM(input_size=input_size, hidden_units=kwargs["hidden_units"], output_size=2)
-
-    #elif model_type == "GRU":
-    #    return GRU(input_size=input_size, hidden_units=kwargs["hidden_units"], output_size=2)
-
-    if model_type == "Transformer":
-        # Ensure hidden_dim is divisible by num_heads
-        num_heads = kwargs.get("num_heads", 4)
-        hidden_dim = kwargs.get("hidden_dim", 64)
-        if hidden_dim % num_heads != 0:
-            hidden_dim = num_heads * ((hidden_dim // num_heads) + 1)
-        
-        return TransformerModel(
-            input_dim=input_size,
-            num_heads=num_heads,
-            num_layers=kwargs.get("num_layers", 2),
-            hidden_dim=hidden_dim,
-            output_size=output_size
+    if model_type == "LSTM":
+        return LSTM(
+            input_size=input_size,
+            hidden_units=kwargs.get("hidden_units", 128),
+            output_size=output_size,
+            num_layers=kwargs.get("num_layers", 2)
         )
     else:
         raise ValueError(f"Invalid model type: {model_type}")
@@ -136,39 +114,87 @@ def build_model(model_type, **kwargs):
         return optim.Adam(self.parameters(), lr=1e-4)"""
 
 # LSTM-based Model
-"""class LSTM(pl.LightningModule):
-    def __init__(self, input_size, hidden_units=128, output_size=2, num_layers=6):
+class LSTM(pl.LightningModule):
+    def __init__(self, input_size, hidden_units=128, output_size=2, num_layers=2):
         super().__init__()
-        self.lstm = nn.LSTM(input_size, hidden_units, num_layers=num_layers, batch_first=True, bidirectional=True, dropout=0.3 if num_layers > 1 else 0)
-        self.fc = nn.Linear(hidden_units * 2, output_size)  # Multiply by 2 for bidirectional
-        self.loss_fn = nn.CrossEntropyLoss()
+        self.save_hyperparameters()
+        
+        # Enhanced architecture
+        self.lstm = nn.LSTM(
+            input_size=input_size,
+            hidden_size=hidden_units,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=True,
+            dropout=0.3 if num_layers > 1 else 0
+        )
+        
+        # Add attention layer
+        self.attention = nn.Sequential(
+            nn.Linear(hidden_units * 2, hidden_units),
+            nn.Tanh(),
+            nn.Linear(hidden_units, 1, bias=False)
+        )
+        
+        # Enhanced classifier head
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_units * 2, hidden_units),
+            nn.BatchNorm1d(hidden_units),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(hidden_units, output_size)
+        )
+        
+        self.loss_fn = nn.CrossEntropyLoss()  # Use class weights
 
     def forward(self, x):
-        if x.dim() == 2:  # Ensure 3D input for LSTM
-            x = x.unsqueeze(1)  # Shape: (batch_size, time_steps=1, feature_dim)
-
-        lstm_out, _ = self.lstm(x)  # Get the LSTM output
-        lstm_out = lstm_out[:, -1, :]  # Use the last time step's output
-        output = self.fc(lstm_out)  # Fully connected layer
-        return output
+        # x shape: (batch_size, seq_len=1, input_size)
+        lstm_out, _ = self.lstm(x)  # (batch_size, seq_len, hidden_units*2)
+        
+        # Attention mechanism
+        attn_weights = torch.softmax(self.attention(lstm_out), dim=1)
+        context = torch.sum(attn_weights * lstm_out, dim=1)
+        
+        return self.classifier(context)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-
-        # Ensure labels are in correct format
         if y.dim() > 1:  # Convert one-hot encoded y to class indices
             y = torch.argmax(y, dim=1)
 
-        # Ensure `x` is correctly shaped for LSTM
-        if x.dim() == 2:  # If missing time-step dimension, add one
-            x = x.unsqueeze(1)  # Shape: (batch_size, 1, feature_dim)
-
-        logits = self.forward(x)  # Forward pass
-        loss = self.loss_fn(logits, y)  # Compute loss
+        logits = self.forward(x)
+        loss = self.loss_fn(logits, y)
+        self.log("train_loss", loss)
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        if y.dim() > 1:  # Convert one-hot encoded y to class indices
+            y = torch.argmax(y, dim=1)
+            
+        logits = self.forward(x)
+        loss = self.loss_fn(logits, y)
+        acc = (logits.argmax(dim=1) == y).float().mean()
+        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_acc", acc, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
-        return optim.Adam(self.parameters(), lr=1e-3)"""
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 
+            mode='min',
+            factor=0.5,
+            patience=3,
+            verbose=True
+        )
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss"
+            }
+        }
 
 
 # GRU-based Model
@@ -201,7 +227,7 @@ def build_model(model_type, **kwargs):
         return optim.Adam(self.parameters(), lr=1e-3)"""
 
 # Transformer-based Model
-class TransformerModel(pl.LightningModule):
+"""class TransformerModel(pl.LightningModule):
     def __init__(self, input_dim, num_heads=4, num_layers=2, hidden_dim=64, output_size=2):
         super().__init__()
         self.save_hyperparameters()
@@ -265,9 +291,6 @@ class TransformerModel(pl.LightningModule):
         self.log("val_acc", acc, prog_bar=True)
         return loss
     
-    """def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer"""
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=1e-4)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -297,4 +320,4 @@ class PositionalEncoding(nn.Module):
         
     def forward(self, x):
         x = x + self.pe[:x.size(1), :]
-        return x
+        return x"""
