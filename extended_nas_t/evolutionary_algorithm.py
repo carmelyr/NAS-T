@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import pytorch_lightning as pl
-from sklearn.model_selection import RepeatedKFold
+from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, TensorDataset
 from model_builder import build_model
 from utils import fitness_function, save_results_csv
@@ -9,39 +9,69 @@ import random
 import time
 import traceback
 import pandas as pd
+from tqdm import tqdm
+import sys
 
 class NASDifferentialEvolution:
-    def __init__(self, population_size=10, generations=5, verbose=True):
+    def __init__(self, population_size=8, generations=3, verbose=True):
         self.population_size = population_size
         self.generations = generations
         self.population = self.initialize_population()
+        self.best_fitness = -float('inf')
+        self.best_model = None
+        self.best_accuracy = 0.0
         self.verbose = verbose
+        self.history = []
+
+    def build_model(self, model_config, X_train, y_train):
+        return build_model(
+            model_type=model_config["model_type"],
+            input_size=X_train.shape[-1],
+            hidden_units=int(model_config["hidden_units"]),
+            output_size=y_train.shape[1],
+            num_layers=int(model_config["num_layers"]),
+            dropout_rate=model_config["dropout_rate"],
+            bidirectional=model_config["bidirectional"],
+            attention=model_config["attention"],
+            learning_rate=model_config["learning_rate"],
+            weight_decay=model_config["weight_decay"]
+        )
 
     def initialize_population(self):
-        # Initialize with Transformer models but with different hyperparameters
         population = []
         for _ in range(self.population_size):
             population.append({
-            "model_type": "LSTM",
-            "hidden_units": random.choice([64, 128, 256]),
-            "num_layers": random.choice([1, 2, 3])
+                "model_type": "LSTM",
+                "hidden_units": random.choice([64, 128, 256]),  # Reduced max
+                "num_layers": random.choice([1, 2, 3]),         # Reduced max
+                "dropout_rate": random.uniform(0.2, 0.4),       # Narrower range
+                "bidirectional": random.choice([True, False]),
+                "attention": True,
+                "learning_rate": random.choice([3e-4, 1e-4, 5e-5]),  # Smaller LRs
+                "batch_size": random.choice([32, 64]),
+                "weight_decay": random.choice([0, 1e-5, 5e-5])  # Smaller decay
             })
         return population
 
-    def mutate(self, parent1, parent2, parent3, F):
+    def mutate(self, parent1, parent2, parent3, F=0.8):
         mutant = {
             "model_type": "LSTM",
-            "hidden_units": random.choice([parent1["hidden_units"], parent2["hidden_units"], parent3["hidden_units"]]),
-            "num_layers": random.choice([parent1["num_layers"], parent2["num_layers"], parent3["num_layers"]])
+            "hidden_units": max(64, min(512, int(parent1["hidden_units"] + F * (parent2["hidden_units"] - parent3["hidden_units"])))),
+            "num_layers": max(1, min(4, int(round(parent1["num_layers"] + F * (parent2["num_layers"] - parent3["num_layers"]))))),
+            "dropout_rate": max(0.1, min(0.5, parent1["dropout_rate"] + F * (parent2["dropout_rate"] - parent3["dropout_rate"]))),
+            "bidirectional": random.choice([parent1["bidirectional"], parent2["bidirectional"], parent3["bidirectional"]]),
+            "attention": True,
+            "learning_rate": 10**(np.log10(parent1["learning_rate"]) + F * (np.log10(parent2["learning_rate"]) - np.log10(parent3["learning_rate"]))),
+            "batch_size": random.choice([parent1["batch_size"], parent2["batch_size"], parent3["batch_size"]]),
+            "weight_decay": random.choice([parent1["weight_decay"], parent2["weight_decay"], parent3["weight_decay"]])
         }
         return mutant
 
-    def crossover(self, parent, mutant, CR):
-        offspring = {
-            "model_type": "LSTM",
-            "hidden_units": parent["hidden_units"] if random.random() < CR else mutant["hidden_units"],
-            "num_layers": parent["num_layers"] if random.random() < CR else mutant["num_layers"]
-        }
+    def crossover(self, parent, mutant, CR=0.9):
+        offspring = parent.copy()
+        for key in mutant:
+            if random.random() < CR:
+                offspring[key] = mutant[key]
         return offspring
     
     def evaluate_model(self, model, val_loader):
@@ -52,145 +82,145 @@ class NASDifferentialEvolution:
             for X, y in val_loader:
                 outputs = model(X)
                 predicted = torch.argmax(outputs, dim=1)
-                true_labels = y
+                true_labels = torch.argmax(y, dim=1)
                 correct += (predicted == true_labels).sum().item()
                 total += y.size(0)
-                
-                # Debug print
-                print("Predictions:", predicted[:5].cpu().numpy())
-                print("True labels:", true_labels[:5].cpu().numpy())
-                
         accuracy = correct / total
-        print(f"Validation Accuracy: {accuracy:.4f}")
         return accuracy
 
-    def cross_validate(self, model_config, X, y, input_size, generation, num_folds=5, num_repeats=1):
-        rkf = RepeatedKFold(n_splits=num_folds, n_repeats=num_repeats, random_state=42)
+    def cross_validate(self, model_config, X, y, input_size, generation):
+        from pytorch_lightning.callbacks import EarlyStopping
+        kf = KFold(n_splits=5, shuffle=True, random_state=42)
         scores = []
-        model_sizes = []
         fold_accuracies = []
+        model_sizes = []
+        training_times = []
 
-        for fold, (train_idx, val_idx) in enumerate(rkf.split(X)):
-            # Get the data splits
-            X_train, X_val = X[train_idx], X[val_idx]
-            y_train, y_val = y[train_idx], y[val_idx]
-            
-            # Convert labels to class indices if one-hot encoded
-            if y_train.ndim > 1 and y_train.shape[1] > 1:
-                y_train = np.argmax(y_train, axis=1)
-                y_val = np.argmax(y_val, axis=1)
-            
-            # Reshape data for Transformer
-            X_train = X_train.reshape(X_train.shape[0], 1, X_train.shape[1])  # Add sequence dimension
-            X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
-            
-            # Convert to tensors
-            X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-            X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
-            y_train_tensor = torch.tensor(y_train, dtype=torch.long)  # Use long for CrossEntropyLoss
-            y_val_tensor = torch.tensor(y_val, dtype=torch.long)
-            
-            # Create datasets and loaders
-            train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-            val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
-            train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4)
-            val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
-
-            # Build the model
+        for fold, (train_idx, val_idx) in enumerate(kf.split(X)):
+            print(f"\n--- Fold {fold + 1} ---")
             try:
-                model = build_model(
-                    model_config["model_type"],
-                    input_size=X_train.shape[-1],
-                    num_heads=model_config["num_heads"],
-                    num_layers=model_config["num_layers"],
-                    hidden_dim=model_config["hidden_dim"],
-                    output_size=len(np.unique(y_train))  # Number of classes
-                )
-                
-                # Configure trainer
+                X_train, X_val = X[train_idx], X[val_idx]
+                y_train, y_val = y[train_idx], y[val_idx]
+
+                X_train = X_train.reshape(X_train.shape[0], 1, X_train.shape[1])
+                X_val = X_val.reshape(X_val.shape[0], 1, X_val.shape[1])
+
+                X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
+                y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
+                X_val_tensor = torch.tensor(X_val, dtype=torch.float32)
+                y_val_tensor = torch.tensor(y_val, dtype=torch.float32)
+
+                train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+                val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
+
+                train_loader = DataLoader(train_dataset, batch_size=model_config["batch_size"], shuffle=True)
+                val_loader = DataLoader(val_dataset, batch_size=model_config["batch_size"], shuffle=False)
+
+                model = self.build_model(model_config, X_train, y_train)
+
                 trainer = pl.Trainer(
-                    max_epochs=100,
-                    min_epochs=30,
+                    max_epochs=150,
                     enable_checkpointing=False,
                     callbacks=[
-                        pl.callbacks.EarlyStopping(
-                            monitor="val_loss",
-                            patience=10,
-                            mode="min",
-                            min_delta=0.01
+                        EarlyStopping(
+                            monitor="val_acc",
+                            patience=30,
+                            mode="max",
+                            min_delta=0.001,
+                            stopping_threshold=0.9
                         )
                     ],
-                    logger=True,
-                    enable_progress_bar=True,
-                    enable_model_summary=True
+                    enable_progress_bar=False,
+                    logger=False
                 )
-                
-                trainer.fit(model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+
+                start_time = time.time()
+                trainer.fit(model, train_loader, val_loader)
+                training_time = time.time() - start_time
+
                 val_acc = self.evaluate_model(model, val_loader)
                 model_size = sum(p.numel() for p in model.parameters() if p.requires_grad)
-                fitness = fitness_function(model_config["model_type"], val_acc, model_size)
-                print(f"Fold {fold + 1}: Val Acc = {val_acc:.4f}, Fitness = {fitness:.4f}")
+                fitness = fitness_function("LSTM", val_acc, model_size, training_time)
+
+                print(f"Fold {fold+1} Accuracy: {val_acc:.4f}, Fitness: {fitness:.4f}, Size: {model_size}, Time: {training_time:.2f}s")
+
+                scores.append(fitness)
+                fold_accuracies.append(val_acc)
+                model_sizes.append(model_size)
+                training_times.append(training_time)
 
             except Exception as e:
                 print(f"Error in fold {fold + 1}: {str(e)}")
-                val_acc, model_size, fitness = 0, 0, 0
-            
-            scores.append(fitness)
-            model_sizes.append(model_size)
-            fold_accuracies.append(val_acc)
-        
-        if np.mean(scores) > 0:
-            save_results_csv(
-                "evolution_results.csv",
-                1,  # run_id
-                generation + 1,
-                model_config["model_type"],
-                str(model_config),
-                fold_accuracies,
-                np.mean(fold_accuracies),
-                np.mean(model_sizes),
-                time.time()
-            )
-        
-        return np.mean(scores), np.mean(model_sizes)
+                traceback.print_exc()
+                return -float('inf'), 0.0, 0, 0.0
+
+        avg_fitness = np.mean(scores)
+        avg_accuracy = np.mean(fold_accuracies)
+        avg_model_size = np.mean(model_sizes)
+        avg_training_time = np.mean(training_times)
+
+        print(f"\n>>> Generation {generation+1}: Avg Accuracy = {avg_accuracy:.4f}, Avg Fitness = {avg_fitness:.4f}\n")
+
+        if avg_accuracy > self.best_accuracy:
+            self.best_accuracy = avg_accuracy
+            self.best_model = model_config
+            self.best_fitness = avg_fitness
+
+        save_results_csv(
+            "evolution_results.csv",
+            generation + 1,
+            generation + 1,
+            "LSTM",
+            str(model_config),
+            fold_accuracies,
+            avg_accuracy,
+            avg_model_size,
+            avg_training_time
+        )
+
+        return avg_fitness, avg_accuracy, avg_model_size, avg_training_time
 
     def evolve_and_check(self, X, y, input_size):
-        generation = 0
-        failed_configs = set()
-        while generation < self.generations:
+        for generation in tqdm(range(self.generations), desc="Evolution Progress", file=sys.stdout, dynamic_ncols=True):
             new_population = []
             for i in range(self.population_size):
-                parent1, parent2, parent3 = random.sample(self.population, 3)
-                mutant = self.mutate(parent1, parent2, parent3, 0.6)
-                offspring = self.crossover(self.population[i], mutant, 0.7)
+                # Select 3 distinct parents
+                candidates = [idx for idx in range(self.population_size) if idx != i]
+                parent1_idx, parent2_idx, parent3_idx = random.sample(candidates, 3)
+                parent1 = self.population[parent1_idx]
+                parent2 = self.population[parent2_idx]
+                parent3 = self.population[parent3_idx]
                 
-                try:
-                    fitness, model_size = self.cross_validate(offspring, X, y, input_size, generation)
-                    new_population.append((offspring, fitness, model_size))
-                    print(f"Generation {generation + 1}: Model {offspring} succeeded with fitness {fitness}")
-                except Exception as e:
-                    print(f"Generation {generation + 1}: Model {offspring} failed. Evolving again...")
-                    traceback.print_exc()
-                    failed_configs.add(str(offspring))
-                    continue
-            
-            if new_population:
-                self.population = [x[0] for x in sorted(new_population, key=lambda x: x[1], reverse=True)]
+                mutant = self.mutate(parent1, parent2, parent3)
+                offspring = self.crossover(self.population[i], mutant)
                 
-                if self.verbose:
-                    print(f"Generation {generation + 1} Best Model: {self.population[0]}")
-            else:
-                print(f"Generation {generation + 1}: All models failed. Skipping to the next generation.")
-            
-            generation += 1
+                fitness, accuracy, model_size, training_time = self.cross_validate(
+                    offspring, X, y, input_size, generation)
+                
+                if fitness > self.population[i].get('fitness', -float('inf')):
+                    offspring['fitness'] = fitness
+                    offspring['accuracy'] = accuracy
+                    new_population.append(offspring)
+                else:
+                    new_population.append(self.population[i])
 
-if __name__ == "__main__":
-    from data_handler import get_data_splits
-    import numpy as np
+            self.population = sorted(new_population, key=lambda x: x['fitness'], reverse=True)
+            self.history.append({
+                'generation': generation + 1,
+                'best_fitness': self.population[0]['fitness'],
+                'best_accuracy': self.population[0]['accuracy'],
+                'best_model': self.population[0]
+            })
 
-    X_analysis = pd.read_csv('classification_ozone/X_train.csv')
-    y_analysis = pd.read_csv('classification_ozone/y_train.csv')
+            if self.verbose:
+                print(f"\nGeneration {generation + 1} Best:")
+                print(f"Fitness: {self.population[0]['fitness']:.4f}")
+                print(f"Accuracy: {self.population[0]['accuracy']:.4f}")
+                print(f"Model: {self.population[0]}\n")
 
-    nas = NASDifferentialEvolution(population_size=10, generations=5, verbose=True)
-    
-    nas.evolve_and_check(X_analysis, y_analysis, input_size=10)
+            # Early stopping if we reach target accuracy
+            if self.population[0]['accuracy'] >= 0.9:
+                print(f"\nTarget accuracy of 0.9 reached at generation {generation + 1}!")
+                break
+
+        return self.population[0]

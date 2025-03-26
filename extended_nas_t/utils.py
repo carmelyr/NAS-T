@@ -114,8 +114,14 @@ def save_results_csv(filename, run_id, generation, architecture, layers, fold_ac
 - fitness: overall fitness score of the architecture
 - higher fitness -> better architecture
 """
-def fitness_function(architecture, validation_accuracy, model_size):
-    size_penalty = alpha * model_size
-    fitness = validation_accuracy - size_penalty - BETA
-    print(f"Debug - val_acc: {validation_accuracy}, model_size: {model_size}, size_penalty: {size_penalty}, fitness: {fitness}")
+def fitness_function(architecture, validation_accuracy, model_size, training_time):
+    # More sophisticated fitness calculation
+    accuracy_weight = 1.0
+    size_penalty = alpha * (model_size / 1e6)  # Scale to millions of parameters
+    time_penalty = BETA * (training_time / 60)  # Scale to minutes
+    
+    # Reward higher accuracy more aggressively
+    accuracy_score = validation_accuracy ** 2
+    
+    fitness = (accuracy_weight * accuracy_score) - size_penalty - time_penalty
     return max(0.0, fitness)

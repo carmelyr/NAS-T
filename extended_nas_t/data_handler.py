@@ -1,5 +1,5 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split, RepeatedKFold
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.preprocessing import RobustScaler, OneHotEncoder
 import torch
 from torch.utils.data import TensorDataset, DataLoader
@@ -29,7 +29,7 @@ y_test = encoder.transform(y_test.to_numpy().reshape(-1, 1))
 #y_test = y_test.to_numpy().flatten()
 
 # Prepare datasets for cross-validation
-rkf = RepeatedKFold(n_splits=5, n_repeats=1, random_state=42)
+rkf = KFold(n_splits=5, shuffle=True, random_state=42)
 
 def get_data_splits():
     for train_idx, val_idx in rkf.split(X_analysis):
@@ -53,7 +53,7 @@ def get_data_splits():
         # Create datasets and loaders
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
         validation_dataset = TensorDataset(X_validation_tensor, y_validation_tensor)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=2)
-        validation_loader = DataLoader(validation_dataset, batch_size=32, shuffle=False, num_workers=2)
+        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=4, persistent_workers=True)
+        validation_loader = DataLoader(validation_dataset, batch_size=32, shuffle=False, num_workers=4, persistent_workers=True)
         
         yield train_loader, validation_loader

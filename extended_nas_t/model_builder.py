@@ -115,86 +115,104 @@ def build_model(model_type, **kwargs):
 
 # LSTM-based Model
 class LSTM(pl.LightningModule):
-    def __init__(self, input_size, hidden_units=128, output_size=2, num_layers=2):
+    def __init__(self, input_size, hidden_units=128, output_size=2, num_layers=2, 
+                 dropout_rate=0.3, bidirectional=True, attention=True, learning_rate=1e-3, weight_decay=0):
         super().__init__()
         self.save_hyperparameters()
         
-        # Enhanced architecture
+        # Store learning rate and weight decay
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        
+        # Enhanced LSTM configuration
         self.lstm = nn.LSTM(
             input_size=input_size,
-            hidden_size=hidden_units,
-            num_layers=num_layers,
+            hidden_size=hidden_units,  # Consider reducing from 512 max
+            num_layers=num_layers,     # Keep max at 3-4
             batch_first=True,
-            bidirectional=True,
-            dropout=0.3 if num_layers > 1 else 0
+            bidirectional=bidirectional,
+            dropout=dropout_rate if num_layers > 1 else 0
         )
         
-        # Add attention layer
-        self.attention = nn.Sequential(
-            nn.Linear(hidden_units * 2, hidden_units),
-            nn.Tanh(),
-            nn.Linear(hidden_units, 1, bias=False)
-        )
+        # Enhanced attention mechanism
+        self.attention = None
+        if attention:
+            self.attention = nn.Sequential(
+                nn.Linear(hidden_units * (2 if bidirectional else 1), hidden_units//2),  # Reduced size
+                nn.Tanh(),
+                nn.Linear(hidden_units//2, 1, bias=False)
+            )
         
-        # Enhanced classifier head
+        # Enhanced classifier
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_units * 2, hidden_units),
+            nn.Linear(hidden_units * (2 if bidirectional else 1), hidden_units),
             nn.BatchNorm1d(hidden_units),
             nn.ReLU(),
-            nn.Dropout(0.4),
+            nn.Dropout(dropout_rate),
             nn.Linear(hidden_units, output_size)
         )
         
-        self.loss_fn = nn.CrossEntropyLoss()  # Use class weights
+        self.loss_fn = nn.CrossEntropyLoss()
+        self.train_acc = torchmetrics.Accuracy(task='multiclass', num_classes=output_size)
+        self.val_acc = torchmetrics.Accuracy(task='multiclass', num_classes=output_size)
 
     def forward(self, x):
-        # x shape: (batch_size, seq_len=1, input_size)
-        lstm_out, _ = self.lstm(x)  # (batch_size, seq_len, hidden_units*2)
+        lstm_out, _ = self.lstm(x)
         
-        # Attention mechanism
-        attn_weights = torch.softmax(self.attention(lstm_out), dim=1)
-        context = torch.sum(attn_weights * lstm_out, dim=1)
-        
+        if self.attention is not None:
+            attn_weights = torch.softmax(self.attention(lstm_out), dim=1)
+            context = torch.sum(attn_weights * lstm_out, dim=1)
+        else:
+            context = lstm_out[:, -1, :]
+            
         return self.classifier(context)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-        if y.dim() > 1:  # Convert one-hot encoded y to class indices
-            y = torch.argmax(y, dim=1)
-
+        y = torch.argmax(y, dim=1)
+        
         logits = self.forward(x)
         loss = self.loss_fn(logits, y)
-        self.log("train_loss", loss)
+        
+        # Add L2 regularization
+        l2_lambda = 0.001
+        l2_norm = sum(p.pow(2.0).sum() for p in self.parameters())
+        loss = loss + l2_lambda * l2_norm
+        
+        self.train_acc(logits, y)
+        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_acc", self.train_acc, prog_bar=True)
         return loss
-    
+
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        if y.dim() > 1:  # Convert one-hot encoded y to class indices
-            y = torch.argmax(y, dim=1)
-            
+        y = torch.argmax(y, dim=1)
+        
         logits = self.forward(x)
         loss = self.loss_fn(logits, y)
-        acc = (logits.argmax(dim=1) == y).float().mean()
+        
+        self.val_acc(logits, y)
         self.log("val_loss", loss, prog_bar=True)
-        self.log("val_acc", acc, prog_bar=True)
+        self.log("val_acc", self.val_acc, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, 
-            mode='min',
-            factor=0.5,
-            patience=3,
-            verbose=True
+        optimizer = torch.optim.AdamW(  # Changed to AdamW
+            self.parameters(), 
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay
         )
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "monitor": "val_loss"
-            }
+        scheduler = {
+            'scheduler': torch.optim.lr_scheduler.CyclicLR(
+                optimizer,
+                base_lr=self.learning_rate/10,
+                max_lr=self.learning_rate,
+                step_size_up=200,
+                cycle_momentum=False
+            ),
+            'interval': 'step'
         }
+        return [optimizer], [scheduler]
 
 
 # GRU-based Model
