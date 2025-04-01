@@ -1,0 +1,3 @@
+Best Model Configuration:
+{'model_type': 'LSTM', 'hidden_units': 64, 'num_layers': 1, 'dropout_rate': 0.30462650327334456, 'bidirectional': True, 'attention': True, 'learning_rate': 4.479519381549659e-06, 'batch_size': 32, 'weight_decay': 1e-05, 'fitness': 0.7249263772634299, 'accuracy': 0.8484848484848484}
+Best Accuracy: 0.8485

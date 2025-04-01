@@ -4,10 +4,13 @@ import torch
 # Hyperparameters
 population_size = 5    # number of individuals in the population
 generations = 3
-F = 0.6                 # mutation factor
-CR = 0.7                # crossover rate
+initial_F = 0.8       # Starting mutation factor
+final_F = 0.3         # Minimum mutation factor
+initial_CR = 0.9      # Starting crossover rate
+final_CR = 0.4        # Ending crossover rate
+decay_rate = 0.85     # Exponential decay rate
 alpha = 0.0000001       # size penalty
-BETA = 0.0000001        # time penalty
+BETA = 0.00000001        # time penalty
 num_folds = 5           # number of folds for cross-validation
 num_repeats = 1         # number of repeats for cross-validation
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

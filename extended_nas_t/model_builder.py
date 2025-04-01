@@ -133,15 +133,21 @@ class LSTM(pl.LightningModule):
             bidirectional=bidirectional,
             dropout=dropout_rate if num_layers > 1 else 0
         )
+        self.ln = nn.LayerNorm(hidden_units * (2 if bidirectional else 1))
         
         # Enhanced attention mechanism
-        self.attention = None
+        """self.attention = None
         if attention:
             self.attention = nn.Sequential(
                 nn.Linear(hidden_units * (2 if bidirectional else 1), hidden_units//2),  # Reduced size
                 nn.Tanh(),
                 nn.Linear(hidden_units//2, 1, bias=False)
-            )
+            )"""
+        self.attention = nn.Sequential(
+            nn.Linear(hidden_units * 2, hidden_units),
+            nn.Tanh(),
+            nn.Linear(hidden_units, 1, bias=False)
+        )
         
         # Enhanced classifier
         self.classifier = nn.Sequential(

@@ -15,7 +15,6 @@ y_test = pd.read_csv('classification_ozone/y_test.csv')
 X_analysis.fillna(X_analysis.mean(), inplace=True)
 X_test.fillna(X_test.mean(), inplace=True)
 
-# scales data using z-score normalization
 scaler = RobustScaler()
 X_analysis = scaler.fit_transform(X_analysis)
 X_test = scaler.transform(X_test)

@@ -27,7 +27,7 @@ def main():
     # Initialize and run evolution
     nas = NASDifferentialEvolution(
         population_size=15,
-        generations=30,  # Increased max generations
+        generations=4,
         verbose=True
     )
     
